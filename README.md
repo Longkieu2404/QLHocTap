@@ -96,6 +96,17 @@ Không làm bước này, đăng nhập/đăng ký trên GitHub Pages sẽ báo 
 5. Bé chọn môn → chọn bài tập → **"📷 Nộp bài bằng ảnh"** → chụp/chọn ảnh bài làm → Nộp.
 6. Phụ huynh đăng nhập lại, mở bài đã nộp → **"📝 Chấm điểm"** → nhập điểm (0–10) và nhận xét.
 
+## Nhiều phụ huynh cùng quản lý một bé
+
+Một bé có thể được quản lý bởi **nhiều tài khoản phụ huynh cùng lúc** (ví dụ: cả ba lẫn mẹ), với **quyền ngang nhau** — ai cũng tạo/sửa/xoá bài tập và chấm điểm được cho bé đó.
+
+1. Phụ huynh đang quản lý bé bấm icon **👥** ở góc thẻ của bé → hệ thống tạo ra một **mã mời** 6 ký tự.
+2. Chia sẻ mã đó cho phụ huynh còn lại (qua tin nhắn, Zalo...).
+3. Phụ huynh kia đăng nhập (hoặc tạo tài khoản Phụ huynh mới nếu chưa có) → ở màn hình danh sách các con, bấm **"🔗 Tham gia bằng mã mời"** → nhập mã → **Tham gia**.
+4. Ngay sau đó, bé sẽ xuất hiện trong danh sách con của phụ huynh vừa tham gia, và cả hai phụ huynh đều có quyền như nhau với bé đó.
+
+> Mỗi mã mời có thể dùng để thêm nhiều phụ huynh khác nhau nếu muốn (không tự hết hạn); phụ huynh đã tạo mã có thể xoá mã đó trong Firebase Console (mục Firestore → collection `invites`) nếu muốn thu hồi.
+
 ## Ghi chú & giới hạn hiện tại
 
 - Đây là bộ rules khởi điểm hợp lý cho dùng trong **một gia đình**. Nếu muốn nhiều gia đình cùng dùng chung 1 project Firebase một cách an toàn tuyệt đối ở quy mô lớn, nên nhờ người có kinh nghiệm Firebase rà lại rules trước khi phát hành rộng.

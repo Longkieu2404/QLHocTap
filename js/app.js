@@ -7,7 +7,8 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc,
-  collection, query, where, getDocs, addDoc, arrayUnion, serverTimestamp
+  collection, query, where, getDocs, addDoc, arrayUnion, serverTimestamp,
+  writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ---------- firebase init ---------- */
@@ -296,17 +297,23 @@ function friendlyAuthError(e){
 
 /* ================= PARENT HOME (children list) ================= */
 function renderParentHome(){
-  const cards = state.children.map(c => `
+  const cards = state.children.map(c => {
+    const parentCount = (c.parentIds||[]).length;
+    return `
     <div class="child-card" data-child="${c.uid}" data-name="${escapeHtml(c.name)}">
+      <button class="invite-icon-btn" data-invite="${c.uid}" data-invitename="${escapeHtml(c.name)}" title="Mời đồng phụ huynh">👥</button>
       <div class="child-avatar" style="background:${uidColor(c.name)}">${initials(c.name)}</div>
       <h4>${escapeHtml(c.name)}</h4>
       <div class="meta">${escapeHtml(c.email)}</div>
-    </div>`).join('');
+      ${parentCount > 1 ? `<div class="parent-count-tag">👥 ${parentCount} phụ huynh quản lý</div>` : ''}
+    </div>`;
+  }).join('');
 
   return `
     <div class="hero">
       <h2>Chào ${escapeHtml(state.userDoc.name)}! 👋</h2>
       <p>Chọn một bé để xem bài tập, hoặc thêm tài khoản con mới</p>
+      <button class="link-btn" id="joinFamilyBtn">🔗 Tham gia bằng mã mời</button>
     </div>
     <div class="children-grid">
       ${cards}
@@ -326,8 +333,16 @@ function attachParentHomeHandlers(){
       render();
     };
   });
+  document.querySelectorAll('[data-invite]').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      openInviteChildModal(btn.dataset.invite, btn.dataset.invitename);
+    };
+  });
   const addBtn = document.getElementById('addChildBtn');
   if(addBtn) addBtn.onclick = openAddChildModal;
+  const joinBtn = document.getElementById('joinFamilyBtn');
+  if(joinBtn) joinBtn.onclick = openJoinFamilyModal;
 }
 
 function openAddChildModal(){
@@ -382,13 +397,136 @@ async function addChildAccount(name, email, password){
     const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
     const childUid = cred.user.uid;
     await setDoc(doc(db,'users',childUid), {
-      role:'student', name, email, parentId: state.user.uid, createdAt: serverTimestamp()
+      role:'student', name, email, parentIds:[state.user.uid], createdAt: serverTimestamp()
     });
     await updateDoc(doc(db,'users', state.user.uid), { children: arrayUnion(childUid) });
     await signOut(secondaryAuth);
   } finally {
     await deleteApp(secondaryApp);
   }
+}
+
+/* ================= ĐỒNG PHỤ HUYNH (mã mời) ================= */
+// Sinh mã mời ngẫu nhiên 6 ký tự, bỏ các ký tự dễ nhầm lẫn (0/O, 1/I...).
+function generateInviteCode(){
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = new Uint32Array(6);
+  crypto.getRandomValues(bytes);
+  let code = '';
+  for(let i=0;i<6;i++) code += chars[bytes[i] % chars.length];
+  return code;
+}
+
+// Phụ huynh đang quản lý bé tạo 1 mã mời để chia sẻ cho phụ huynh khác.
+async function createInviteForChild(childId, childName){
+  const code = generateInviteCode();
+  await setDoc(doc(db,'invites',code), {
+    studentId: childId,
+    studentName: childName,
+    createdBy: state.user.uid,
+    createdAt: serverTimestamp()
+  });
+  return code;
+}
+
+// Một phụ huynh (đã có tài khoản Phụ huynh) nhập mã mời để tự liên kết mình
+// làm đồng phụ huynh của bé tương ứng. Ghi cùng lúc (batch) vào hồ sơ bé
+// (thêm mình vào parentIds) và hồ sơ chính mình (thêm bé vào children).
+async function acceptInviteCode(code){
+  const inviteSnap = await getDoc(doc(db,'invites',code));
+  if(!inviteSnap.exists()) throw new Error('invite-not-found');
+  const { studentId } = inviteSnap.data();
+
+  const studentSnap = await getDoc(doc(db,'users',studentId));
+  if(studentSnap.exists() && (studentSnap.data().parentIds||[]).includes(state.user.uid)){
+    throw new Error('already-linked');
+  }
+
+  const batch = writeBatch(db);
+  batch.update(doc(db,'users', studentId), {
+    parentIds: arrayUnion(state.user.uid),
+    lastJoinCode: code
+  });
+  batch.update(doc(db,'users', state.user.uid), {
+    children: arrayUnion(studentId)
+  });
+  await batch.commit();
+}
+
+function openInviteChildModal(childId, childName){
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="overlay" id="ov">
+      <div class="modal">
+        <h3>👥 Mời đồng phụ huynh cho ${escapeHtml(childName)}</h3>
+        <p class="field-hint" style="margin-bottom:14px;">Chia sẻ mã bên dưới cho phụ huynh kia. Họ cần có sẵn (hoặc tạo mới) một tài khoản Phụ huynh, sau đó bấm "Tham gia bằng mã mời" và nhập mã này để cùng quản lý bé.</p>
+        <div id="inviteBox" class="invite-code-box">Đang tạo mã...</div>
+        <div id="iErr"></div>
+        <div class="modal-actions">
+          <button class="btn-cancel" id="cancelBtn">Đóng</button>
+          <button class="btn-save" id="copyBtn" disabled>Sao chép mã</button>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('cancelBtn').onclick = closeModal;
+  document.getElementById('ov').onclick = (e)=>{ if(e.target.id==='ov') closeModal(); };
+
+  let currentCode = '';
+  createInviteForChild(childId, childName).then(code => {
+    currentCode = code;
+    document.getElementById('inviteBox').textContent = code;
+    const copyBtn = document.getElementById('copyBtn');
+    copyBtn.disabled = false;
+    copyBtn.onclick = async () => {
+      try{
+        await navigator.clipboard.writeText(currentCode);
+        showToast('Đã sao chép mã mời! 📋');
+      }catch(e){
+        showToast('Không sao chép được, hãy chọn và copy mã thủ công.');
+      }
+    };
+  }).catch(()=>{
+    document.getElementById('iErr').innerHTML = `<div class="error-msg">Không tạo được mã mời, thử lại nhé.</div>`;
+  });
+}
+
+function openJoinFamilyModal(){
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="overlay" id="ov">
+      <div class="modal">
+        <h3>🔗 Tham gia bằng mã mời</h3>
+        <p class="field-hint" style="margin-bottom:14px;">Nhập mã mời mà một phụ huynh khác đã chia sẻ với bạn để cùng quản lý bé đó.</p>
+        <div class="field"><label>Mã mời</label><input id="jCode" placeholder="VD: A3F7QZ" maxlength="6" style="text-transform:uppercase;letter-spacing:2px;"/></div>
+        <div id="jErr"></div>
+        <div class="modal-actions">
+          <button class="btn-cancel" id="cancelBtn">Huỷ</button>
+          <button class="btn-save" id="saveBtn">Tham gia</button>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('cancelBtn').onclick = closeModal;
+  document.getElementById('ov').onclick = (e)=>{ if(e.target.id==='ov') closeModal(); };
+  document.getElementById('saveBtn').onclick = async () => {
+    const code = document.getElementById('jCode').value.trim().toUpperCase();
+    const errBox = document.getElementById('jErr');
+    if(!code){ errBox.innerHTML = `<div class="error-msg">Vui lòng nhập mã mời.</div>`; return; }
+    const saveBtn = document.getElementById('saveBtn');
+    saveBtn.disabled = true; saveBtn.textContent = 'Đang tham gia...';
+    try{
+      await acceptInviteCode(code);
+      await loadChildren();
+      closeModal(); render();
+      showToast('Đã tham gia quản lý bé! 🎉');
+    }catch(e){
+      const msgMap = {
+        'invite-not-found': 'Mã mời không tồn tại hoặc đã hết hạn.',
+        'already-linked': 'Bạn đã là phụ huynh của bé này rồi.'
+      };
+      errBox.innerHTML = `<div class="error-msg">${escapeHtml(msgMap[e.message] || 'Không tham gia được, kiểm tra lại mã và thử lại.')}</div>`;
+      saveBtn.disabled = false; saveBtn.textContent = 'Tham gia';
+    }
+  };
 }
 
 /* ================= SUBJECTS ================= */

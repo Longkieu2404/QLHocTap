@@ -1,9 +1,16 @@
 rules_version = '2';
 
-// Rules cho app "Vườn Học Tập" — mô hình 1 Phụ huynh có nhiều tài khoản Học sinh (con).
-// Đây là bộ rules khởi điểm hợp lý cho app dùng trong gia đình / nhóm nhỏ.
-// Nếu triển khai cho nhiều gia đình cùng lúc, nên kiểm thử kỹ trong
-// Firebase Console → Firestore → Rules Playground trước khi dùng thật.
+// Rules cho app "Vườn Học Tập" — mô hình NHIỀU Phụ huynh có thể cùng quản lý
+// MỘT tài khoản Học sinh (con), tất cả phụ huynh liên kết có quyền ngang nhau
+// (tạo/sửa/xoá bài tập, chấm điểm) trên các con mà họ được liên kết.
+//
+// Liên kết thêm phụ huynh dùng cơ chế "mã mời": phụ huynh đang quản lý một
+// bé tạo ra 1 mã mời (collection `invites`), chia sẻ mã đó (vd: qua Zalo/tin
+// nhắn) cho phụ huynh khác; phụ huynh kia nhập mã để tự liên kết mình vào
+// hồ sơ của bé. Đây là bộ rules khởi điểm hợp lý cho dùng trong một gia đình
+// / nhóm nhỏ (gia đình mở rộng). Nếu triển khai cho nhiều gia đình không quen
+// biết nhau cùng lúc, nên kiểm thử kỹ trong Firebase Console → Firestore →
+// Rules Playground trước khi dùng thật.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -16,6 +23,10 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
+    // true nếu người dùng hiện tại là MỘT TRONG CÁC phụ huynh của childId.
+    // Dựa trên field "children" nằm trên chính hồ sơ phụ huynh — luôn đúng
+    // cho mọi phụ huynh đã liên kết (dù họ là người tạo bé hay tham gia sau
+    // bằng mã mời), nên tất cả phụ huynh liên kết có quyền ngang nhau.
     function isParentOf(childId) {
       return isSignedIn() &&
         myUser().role == 'parent' &&
@@ -27,52 +38,90 @@ service cloud.firestore {
       allow read: if isSignedIn() && (
         request.auth.uid == userId || isParentOf(userId)
       );
-      // Tạo hồ sơ: được tạo hồ sơ của chính uid mình (áp dụng khi phụ huynh
-      // tự đăng ký), HOẶC một phụ huynh đã đăng nhập tạo hồ sơ role="student"
-      // cho con mình (tài khoản con được tạo qua secondary app, nhưng hồ sơ
-      // Firestore được ghi trong khi phiên đăng nhập chính vẫn là phụ huynh).
+
+      // Tạo hồ sơ:
+      // - Tự tạo hồ sơ của chính uid mình (khi phụ huynh tự đăng ký), HOẶC
+      // - Một phụ huynh đã đăng nhập tạo hồ sơ role="student" cho con mình
+      //   (tài khoản con được tạo qua secondary app, nhưng hồ sơ Firestore
+      //   được ghi trong khi phiên đăng nhập chính vẫn là phụ huynh).
+      //   parentIds khi tạo mới chỉ được chứa đúng 1 phụ huynh: người tạo.
       allow create: if isSignedIn() && (
         request.auth.uid == userId ||
         (
           myUser().role == 'parent' &&
           request.resource.data.role == 'student' &&
-          request.resource.data.parentId == request.auth.uid
+          request.resource.data.parentIds is list &&
+          request.resource.data.parentIds == [request.auth.uid]
         )
       );
-      // Cập nhật: chủ tài khoản tự sửa, hoặc phụ huynh cập nhật field
-      // "children" (thêm con) trên chính hồ sơ mình — đã khớp ở điều kiện create/update phía trên.
-      allow update: if isSignedIn() && request.auth.uid == userId;
+
+      // Cập nhật:
+      // - Chủ tài khoản tự sửa hồ sơ của chính mình (không giới hạn field —
+      //   giữ như thiết kế gốc để phụ huynh có thể cập nhật "children" khi
+      //   thêm con, hoặc tự sửa tên...).
+      // - HOẶC một phụ huynh KHÁC tự liên kết mình làm đồng phụ huynh của
+      //   một học sinh, bằng cách xuất trình một mã mời hợp lệ (đã được
+      //   chính một phụ huynh hiện tại của bé đó tạo ra). Update này CHỈ
+      //   được phép thêm chính uid của người gọi vào mảng parentIds (không
+      //   được đổi field nào khác ngoài parentIds + lastJoinCode).
+      allow update: if isSignedIn() && (
+        request.auth.uid == userId ||
+        (
+          resource.data.role == 'student' &&
+          myUser().role == 'parent' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['parentIds', 'lastJoinCode']) &&
+          resource.data.parentIds is list &&
+          request.resource.data.parentIds == resource.data.parentIds.concat([request.auth.uid]) &&
+          request.resource.data.lastJoinCode is string &&
+          get(/databases/$(database)/documents/invites/$(request.resource.data.lastJoinCode)).data.studentId == userId
+        )
+      );
       allow delete: if false;
+    }
+
+    // invites/{code}: mã mời để thêm đồng phụ huynh cho 1 học sinh.
+    // Document ID chính là mã mời (chuỗi ngẫu nhiên) — không thể liệt kê
+    // (list) toàn bộ collection, chỉ đọc được khi biết đúng mã.
+    match /invites/{code} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      // Chỉ một phụ huynh ĐANG quản lý bé đó mới được tạo mã mời cho bé đó.
+      allow create: if isSignedIn() &&
+        myUser().role == 'parent' &&
+        isParentOf(request.resource.data.studentId) &&
+        request.resource.data.createdBy == request.auth.uid;
+      allow update: if false;
+      // Người tạo mã có thể thu hồi (xoá) mã mời của chính mình.
+      allow delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
     }
 
     // assignments/{id}
     match /assignments/{assignmentId} {
       allow read: if isSignedIn() && (
         resource.data.studentId == request.auth.uid ||
-        resource.data.createdBy == request.auth.uid
+        isParentOf(resource.data.studentId)
       );
       allow create: if isSignedIn() &&
         myUser().role == 'parent' &&
         request.resource.data.createdBy == request.auth.uid &&
         isParentOf(request.resource.data.studentId);
-      allow update, delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
+      // Bất kỳ phụ huynh nào liên kết với học sinh đó đều được sửa/xoá bài
+      // tập (không chỉ riêng người đã tạo ra bài tập).
+      allow update, delete: if isSignedIn() && isParentOf(resource.data.studentId);
     }
 
     // submissions/{assignmentId} — doc id trùng với assignment id
     match /submissions/{assignmentId} {
       allow read: if isSignedIn() && (
         resource.data.studentId == request.auth.uid ||
-        get(/databases/$(database)/documents/assignments/$(assignmentId)).data.createdBy == request.auth.uid
+        isParentOf(resource.data.studentId)
       );
       // Học sinh tạo bài nộp cho chính mình
       allow create: if isSignedIn() &&
         request.resource.data.studentId == request.auth.uid &&
         get(/databases/$(database)/documents/assignments/$(assignmentId)).data.studentId == request.auth.uid;
-      // Chỉ phụ huynh (người tạo bài tập) được sửa để chấm điểm / nhận xét
-      allow update: if isSignedIn() &&
-        get(/databases/$(database)/documents/assignments/$(assignmentId)).data.createdBy == request.auth.uid;
-      allow delete: if isSignedIn() &&
-        get(/databases/$(database)/documents/assignments/$(assignmentId)).data.createdBy == request.auth.uid;
+      // Bất kỳ phụ huynh nào liên kết với học sinh đó đều được chấm điểm / sửa / xoá.
+      allow update, delete: if isSignedIn() && isParentOf(resource.data.studentId);
     }
   }
 }
