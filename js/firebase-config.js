@@ -4,10 +4,11 @@
 // dữ liệu thật sự được kiểm soát bởi Firestore/Storage Security Rules (xem firestore.rules, storage.rules).
 
 export const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+ apiKey: "AIzaSyA1yPU-haUDqhc_mGCOsQgJKh-Z4zZ9cso",
+  authDomain: "quanlyhoctap-f791e.firebaseapp.com",
+  projectId: "quanlyhoctap-f791e",
+  storageBucket: "quanlyhoctap-f791e.firebasestorage.app",
+  messagingSenderId: "958655872290",
+  appId: "1:958655872290:web:e4e885fbc428d40d7d797b",
+  measurementId: "G-VW499L2WGQ"
 };
