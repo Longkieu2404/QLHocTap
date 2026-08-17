@@ -1,0 +1,69 @@
+rules_version = '2';
+
+// Rules cho app "Vườn Học Tập" — mô hình 1 Phụ huynh có nhiều tài khoản Học sinh (con).
+// Đây là bộ rules khởi điểm hợp lý cho app dùng trong gia đình / nhóm nhỏ.
+// Nếu triển khai cho nhiều gia đình cùng lúc, nên kiểm thử kỹ trong
+// Firebase Console → Firestore → Rules Playground trước khi dùng thật.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function myUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isParentOf(childId) {
+      return isSignedIn() &&
+        myUser().role == 'parent' &&
+        childId in myUser().children;
+    }
+
+    // users/{uid}: hồ sơ của chính mình, hoặc phụ huynh xem hồ sơ con mình
+    match /users/{userId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == userId || isParentOf(userId)
+      );
+      // Tạo hồ sơ: chỉ được tạo hồ sơ của chính uid mình (áp dụng cho cả
+      // phụ huynh tự đăng ký và tài khoản con được tạo qua secondary app).
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      // Cập nhật: chủ tài khoản tự sửa, hoặc phụ huynh cập nhật field
+      // "children" (thêm con) trên chính hồ sơ mình — đã khớp ở điều kiện create/update phía trên.
+      allow update: if isSignedIn() && request.auth.uid == userId;
+      allow delete: if false;
+    }
+
+    // assignments/{id}
+    match /assignments/{assignmentId} {
+      allow read: if isSignedIn() && (
+        resource.data.studentId == request.auth.uid ||
+        resource.data.createdBy == request.auth.uid
+      );
+      allow create: if isSignedIn() &&
+        myUser().role == 'parent' &&
+        request.resource.data.createdBy == request.auth.uid &&
+        isParentOf(request.resource.data.studentId);
+      allow update, delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
+    }
+
+    // submissions/{assignmentId} — doc id trùng với assignment id
+    match /submissions/{assignmentId} {
+      allow read: if isSignedIn() && (
+        resource.data.studentId == request.auth.uid ||
+        get(/databases/$(database)/documents/assignments/$(assignmentId)).data.createdBy == request.auth.uid
+      );
+      // Học sinh tạo bài nộp cho chính mình
+      allow create: if isSignedIn() &&
+        request.resource.data.studentId == request.auth.uid &&
+        get(/databases/$(database)/documents/assignments/$(assignmentId)).data.studentId == request.auth.uid;
+      // Chỉ phụ huynh (người tạo bài tập) được sửa để chấm điểm / nhận xét
+      allow update: if isSignedIn() &&
+        get(/databases/$(database)/documents/assignments/$(assignmentId)).data.createdBy == request.auth.uid;
+      allow delete: if isSignedIn() &&
+        get(/databases/$(database)/documents/assignments/$(assignmentId)).data.createdBy == request.auth.uid;
+    }
+  }
+}

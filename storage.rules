@@ -1,0 +1,20 @@
+rules_version = '2';
+
+// Ảnh bài nộp được lưu tại: submissions/{studentUid}/{fileName}
+// Học sinh chỉ được tải lên thư mục của chính mình.
+// Mọi người dùng đã đăng nhập trong app (phụ huynh + các con) đều có thể xem ảnh —
+// phù hợp với app dùng trong phạm vi 1 gia đình. Nếu nhiều gia đình dùng chung
+// 1 project Firebase, nên siết lại quyền đọc dựa trên quan hệ phụ huynh-con
+// (tương tự firestore.rules) trước khi phát hành rộng rãi.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /submissions/{studentUid}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.auth.uid == studentUid
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+  }
+}
