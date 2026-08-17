@@ -188,16 +188,18 @@ img{max-width:100%;}
 /* Máy tính bảng nhỏ & điện thoại lớn (Samsung Galaxy, iPhone Pro Max...) */
 @media (max-width:600px){
   .wrap{padding-top:14px;}
-  .topbar{margin-bottom:4px;}
-  .brand{gap:9px;}
-  .brand h1{font-size:21px;}
-  .brand .sub{font-size:11px;}
-  .mascot{width:42px; height:42px;}
-  .user-pill{padding:6px 10px 6px 6px; gap:8px;}
-  .user-pill .avatar{width:30px; height:30px; font-size:12px;}
-  .user-pill .name{font-size:12.5px; max-width:38vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .user-pill .role-tag{font-size:10px;}
-  .logout-btn{padding:6px 10px; font-size:11.5px;}
+  /* Header gọn thành 1 hàng duy nhất: logo+tên app bên trái (co giãn/ẩn bớt
+     khi chật), avatar+tên+đăng xuất bên phải (không co lại). */
+  .topbar{margin-bottom:14px; flex-wrap:nowrap; gap:8px;}
+  .brand{gap:7px; min-width:0; flex:1 1 auto; overflow:hidden;}
+  .brand h1{font-size:17px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .brand .sub{display:none;}
+  .mascot{width:34px; height:34px;}
+  .user-pill{padding:5px 8px 5px 5px; gap:6px; flex:0 0 auto;}
+  .user-pill .avatar{width:28px; height:28px; font-size:11px;}
+  .user-pill .name{font-size:12px; max-width:22vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .user-pill .role-tag{display:none;}
+  .logout-btn{padding:6px 9px; font-size:11px; white-space:nowrap;}
 
   .hero{margin:18px 0 16px;}
   .hero h2{font-size:21px; line-height:1.3;}
@@ -243,8 +245,10 @@ img{max-width:100%;}
 /* Điện thoại nhỏ (iPhone SE, các máy màn hình ~360-390px) */
 @media (max-width:380px){
   .wrap{padding-left:max(14px, env(safe-area-inset-left)); padding-right:max(14px, env(safe-area-inset-right));}
-  .brand .sub{display:none;}
-  .user-pill .role-tag{display:none;}
+  .brand h1{font-size:15.5px;}
+  .mascot{width:30px; height:30px;}
+  .user-pill .name{max-width:18vw;}
+  .logout-btn{padding:5px 8px; font-size:10.5px;}
   .hero h2{font-size:19px;}
   .children-grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:10px;}
   .icon-picker{grid-template-columns:repeat(3,1fr);}

@@ -236,7 +236,7 @@ function render(){
   else if(state.view === 'subjects') body = renderSubjects();
   else if(state.view === 'assignments') body = renderAssignments();
 
-  $app.innerHTML = `<div class="wrap">${renderTopbar()}${body}<p style="text-align:center;font-size:12px;color:#9A93B5;font-weight:600;margin-top:30px;">Dữ liệu được đồng bộ an toàn qua Firebase ☁️</p></div>`;
+  $app.innerHTML = `<div class="wrap">${renderTopbar()}${body}</div>`;
   attachTopbarHandlers();
   if(state.view === 'parent-home') attachParentHomeHandlers();
   else if(state.view === 'subjects') attachSubjectsHandlers();
@@ -364,10 +364,16 @@ function attachParentHomeHandlers(){
       state.currentChildId = el.dataset.child;
       state.currentChildName = el.dataset.name;
       $loading.classList.remove('hidden'); $app.classList.add('hidden');
-      await loadSubjectsFor(state.currentChildId);
-      $loading.classList.add('hidden'); $app.classList.remove('hidden');
-      state.view = 'subjects';
-      render();
+      try{
+        await loadSubjectsFor(state.currentChildId);
+        state.view = 'subjects';
+      }catch(e){
+        console.error('Lỗi khi tải danh sách môn học:', e);
+        showToast('Không tải được danh sách môn học, thử lại nhé.' + (e?.code === 'permission-denied' ? ' (Kiểm tra đã Publish Firestore Rules mới chưa.)' : ''));
+      }finally{
+        $loading.classList.add('hidden'); $app.classList.remove('hidden');
+        render();
+      }
     };
   });
   document.querySelectorAll('[data-invite]').forEach(btn => {
@@ -631,10 +637,16 @@ function attachSubjectsHandlers(){
       if(e.target.closest('[data-edit-subject]') || e.target.closest('[data-delete-subject]')) return;
       state.currentSubject = el.dataset.subject;
       $loading.classList.remove('hidden'); $app.classList.add('hidden');
-      await loadAssignmentsFor(state.currentChildId);
-      $loading.classList.add('hidden'); $app.classList.remove('hidden');
-      state.view = 'assignments';
-      render();
+      try{
+        await loadAssignmentsFor(state.currentChildId);
+        state.view = 'assignments';
+      }catch(e){
+        console.error('Lỗi khi tải danh sách bài tập:', e);
+        showToast('Không tải được bài tập, thử lại nhé.' + (e?.code === 'permission-denied' ? ' (Kiểm tra đã Publish Firestore Rules mới chưa.)' : ''));
+      }finally{
+        $loading.classList.add('hidden'); $app.classList.remove('hidden');
+        render();
+      }
     };
   });
   document.querySelectorAll('[data-edit-subject]').forEach(btn => {
