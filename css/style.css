@@ -101,6 +101,20 @@ a{color:var(--purple-deep);}
 .door-card h3{font-size:21px; margin-bottom:4px;}
 .door-card .desc{font-size:13.5px; opacity:0.95; font-weight:600;}
 .door-card .blob{position:absolute; right:-24px; bottom:-24px; width:110px; height:110px; opacity:0.18;}
+.door-actions{position:absolute; top:12px; right:12px; display:flex; gap:6px; z-index:2;}
+.door-icon-btn{width:30px; height:30px; border-radius:50%; background:rgba(255,255,255,0.88); color:var(--ink); font-size:13px; display:flex; align-items:center; justify-content:center; box-shadow:var(--card-shadow);}
+.add-subject-card{background:#F1EEFB; border:2px dashed #CDBFF2; box-shadow:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; color:var(--purple-deep); font-weight:700;}
+.add-subject-card:hover{transform:translateY(-6px);}
+.add-subject-card .plus{font-size:32px;}
+
+/* icon/color pickers (create/edit subject modal) */
+.icon-picker{display:grid; grid-template-columns:repeat(5,1fr); gap:8px;}
+.icon-pick-btn{background:#F8F6FE; border:2px solid #E7E1FB; border-radius:14px; padding:8px; display:flex; align-items:center; justify-content:center; color:var(--purple-deep);}
+.icon-pick-btn svg{width:24px; height:24px;}
+.icon-pick-btn.active{border-color:var(--purple); background:#EFE9FF;}
+.color-picker{display:flex; flex-wrap:wrap; gap:10px;}
+.color-pick-btn{width:34px; height:34px; border-radius:50%; border:3px solid transparent; box-shadow:var(--card-shadow);}
+.color-pick-btn.active{border-color:var(--ink);}
 
 /* breadcrumb / nav */
 .crumbs{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:16px;}

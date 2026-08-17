@@ -95,6 +95,22 @@ service cloud.firestore {
       allow delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
     }
 
+    // subjects/{id} — môn học do phụ huynh tự tạo cho từng bé (thay cho danh
+    // sách môn học cố định). Chỉ phụ huynh liên kết với bé đó mới được
+    // tạo/sửa/xoá; học sinh (và phụ huynh) chỉ được đọc.
+    match /subjects/{subjectId} {
+      allow read: if isSignedIn() && (
+        resource.data.studentId == request.auth.uid ||
+        isParentOf(resource.data.studentId)
+      );
+      allow create: if isSignedIn() &&
+        myUser().role == 'parent' &&
+        request.resource.data.createdBy == request.auth.uid &&
+        isParentOf(request.resource.data.studentId);
+      // Bất kỳ phụ huynh nào liên kết với học sinh đó đều được sửa/xoá môn học.
+      allow update, delete: if isSignedIn() && isParentOf(resource.data.studentId);
+    }
+
     // assignments/{id}
     match /assignments/{assignmentId} {
       allow read: if isSignedIn() && (

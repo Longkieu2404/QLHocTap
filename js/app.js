@@ -35,15 +35,37 @@ async function uploadToCloudinary(file){
 }
 
 /* ---------- constants ---------- */
-const SUBJECTS = {
-  toan: { name: "Toán", cls: "math", color: "#FF6B6B", badgeBg: "#FFE3E3",
-    icon: `<svg viewBox="0 0 60 60" fill="none"><rect x="10" y="10" width="40" height="40" rx="8" fill="currentColor" opacity="0.25"/><path d="M18 18 L42 42 M42 18 L18 42" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><circle cx="30" cy="30" r="4" fill="currentColor"/></svg>` },
-  tv: { name: "Tiếng Việt", cls: "viet", color: "#FFB100", badgeBg: "#FFF1D2",
-    icon: `<svg viewBox="0 0 60 60" fill="none"><path d="M12 15 C22 10 30 10 30 15 L30 46 C30 41 22 41 12 46 Z" fill="currentColor" opacity="0.9"/><path d="M48 15 C38 10 30 10 30 15 L30 46 C30 41 38 41 48 46 Z" fill="currentColor" opacity="0.6"/></svg>` },
-  ta: { name: "Tiếng Anh", cls: "eng", color: "#3FC9BE", badgeBg: "#DFF6F4",
-    icon: `<svg viewBox="0 0 60 60" fill="none"><circle cx="30" cy="30" r="19" fill="currentColor" opacity="0.85"/><path d="M11 30 H49 M30 11 C22 20 22 40 30 49 C38 40 38 20 30 11Z" stroke="currentColor" stroke-width="2.4" fill="none" opacity="0.5"/></svg>` }
+// Bộ icon có sẵn để phụ huynh chọn khi tự tạo môn học (không còn danh sách
+// môn học cố định — phụ huynh tạo/sửa/xoá môn học tuỳ ý cho từng bé).
+const SUBJECT_ICONS = {
+  book: `<svg viewBox="0 0 60 60" fill="none"><path d="M12 15 C22 10 30 10 30 15 L30 46 C30 41 22 41 12 46 Z" fill="currentColor" opacity="0.9"/><path d="M48 15 C38 10 30 10 30 15 L30 46 C30 41 38 41 48 46 Z" fill="currentColor" opacity="0.6"/></svg>`,
+  cross: `<svg viewBox="0 0 60 60" fill="none"><rect x="10" y="10" width="40" height="40" rx="8" fill="currentColor" opacity="0.25"/><path d="M18 18 L42 42 M42 18 L18 42" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><circle cx="30" cy="30" r="4" fill="currentColor"/></svg>`,
+  globe: `<svg viewBox="0 0 60 60" fill="none"><circle cx="30" cy="30" r="19" fill="currentColor" opacity="0.85"/><path d="M11 30 H49 M30 11 C22 20 22 40 30 49 C38 40 38 20 30 11Z" stroke="currentColor" stroke-width="2.4" fill="none" opacity="0.5"/></svg>`,
+  star: `<svg viewBox="0 0 60 60" fill="none"><path d="M30 8 L36 24 L53 24 L39 34 L44 51 L30 41 L16 51 L21 34 L7 24 L24 24 Z" fill="currentColor"/></svg>`,
+  flask: `<svg viewBox="0 0 60 60" fill="none"><path d="M24 8 H36 V22 L48 46 C50 50 47 54 43 54 H17 C13 54 10 50 12 46 L24 22 Z" fill="currentColor" opacity="0.85"/><path d="M18 40 H42" stroke="#fff" stroke-width="3" opacity="0.5"/></svg>`,
+  calc: `<svg viewBox="0 0 60 60" fill="none"><rect x="14" y="8" width="32" height="44" rx="6" fill="currentColor" opacity="0.25"/><rect x="19" y="14" width="22" height="10" rx="2" fill="currentColor"/><circle cx="22" cy="34" r="3" fill="currentColor"/><circle cx="30" cy="34" r="3" fill="currentColor"/><circle cx="38" cy="34" r="3" fill="currentColor"/><circle cx="22" cy="44" r="3" fill="currentColor"/><circle cx="30" cy="44" r="3" fill="currentColor"/><circle cx="38" cy="44" r="3" fill="currentColor"/></svg>`,
+  music: `<svg viewBox="0 0 60 60" fill="none"><circle cx="18" cy="46" r="7" fill="currentColor"/><circle cx="42" cy="40" r="7" fill="currentColor"/><path d="M25 46 V14 L49 8 V40" stroke="currentColor" stroke-width="4" fill="none" stroke-linecap="round"/></svg>`,
+  palette: `<svg viewBox="0 0 60 60" fill="none"><path d="M30 8 C15 8 6 19 6 31 C6 40 13 44 19 41 C22 39 27 40 27 44 C27 49 31 52 36 52 C48 52 54 41 54 30 C54 17 44 8 30 8Z" fill="currentColor" opacity="0.3"/><circle cx="18" cy="26" r="4" fill="currentColor"/><circle cx="30" cy="18" r="4" fill="currentColor"/><circle cx="42" cy="24" r="4" fill="currentColor"/><circle cx="20" cy="38" r="4" fill="currentColor"/></svg>`,
+  ball: `<svg viewBox="0 0 60 60" fill="none"><circle cx="30" cy="30" r="22" fill="currentColor" opacity="0.85"/><path d="M30 14 L38 22 L35 32 L25 32 L22 22 Z M30 14 V8 M22 22 L14 18 M38 22 L46 18 M25 32 L20 44 M35 32 L40 44" stroke="#fff" stroke-width="2" opacity="0.6" fill="none"/></svg>`,
+  puzzle: `<svg viewBox="0 0 60 60" fill="none"><path d="M14 14 H28 C28 10 32 8 34 10 C36 12 34 16 34 16 V14 H46 V26 C50 26 52 30 50 32 C48 34 44 32 44 32 V38 H32 C32 42 28 44 26 42 C24 40 26 36 26 36 H14 Z" fill="currentColor" opacity="0.85"/></svg>`
 };
+// Bảng màu để phụ huynh chọn cho môn học tự tạo.
+const SUBJECT_COLORS = ["#FF6B6B","#FFB100","#3FC9BE","#8B6FD6","#FF9EAA","#6EC6FF","#59C36A","#FF8F5E"];
 const AVATAR_COLORS = ["#FF6B6B","#FFB100","#3FC9BE","#8B6FD6","#FF9EAA","#6EC6FF"];
+
+function shadeColor(hex, percent){
+  hex = (hex||'#8B6FD6').replace('#','');
+  let r = parseInt(hex.substring(0,2),16), g = parseInt(hex.substring(2,4),16), b = parseInt(hex.substring(4,6),16);
+  r = Math.max(0, Math.min(255, Math.round(r*(1+percent))));
+  g = Math.max(0, Math.min(255, Math.round(g*(1+percent))));
+  b = Math.max(0, Math.min(255, Math.round(b*(1+percent))));
+  return '#' + [r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+function hexToRgba(hex, alpha){
+  hex = (hex||'#8B6FD6').replace('#','');
+  const r = parseInt(hex.substring(0,2),16), g = parseInt(hex.substring(2,4),16), b = parseInt(hex.substring(4,6),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 /* ---------- state ---------- */
 let state = {
@@ -53,6 +75,7 @@ let state = {
   currentChildId: null,
   currentChildName: null,
   currentSubject: null,
+  subjects: [],
   assignments: [],
   submissions: {},
   view: 'login'
@@ -104,6 +127,7 @@ onAuthStateChanged(auth, async (user) => {
       if(state.userDoc.role === 'student'){
         state.currentChildId = user.uid;
         state.currentChildName = state.userDoc.name;
+        await loadSubjectsFor(user.uid);
         state.view = 'subjects';
       } else if(state.userDoc.role === 'parent'){
         await loadChildren();
@@ -131,7 +155,7 @@ onAuthStateChanged(auth, async (user) => {
       return;
     }
   } else {
-    state = { ...state, userDoc:null, children:[], currentChildId:null, currentSubject:null, view:'login' };
+    state = { ...state, userDoc:null, children:[], currentChildId:null, currentSubject:null, subjects:[], view:'login' };
   }
   $loading.classList.add('hidden');
   $app.classList.remove('hidden');
@@ -152,6 +176,12 @@ async function loadChildren(){
     if(s.exists()) results.push({ uid:id, ...s.data() });
   }
   state.children = results;
+}
+
+async function loadSubjectsFor(childId){
+  const q1 = query(collection(db,'subjects'), where('studentId','==', childId));
+  const snap = await getDocs(q1);
+  state.subjects = snap.docs.map(d => ({ id:d.id, ...d.data() }));
 }
 
 async function loadAssignmentsFor(childId){
@@ -197,6 +227,10 @@ function attachTopbarHandlers(){
 /* ---------- main render router ---------- */
 function render(){
   if(state.view === 'login'){ $app.innerHTML = renderLogin(); attachLoginHandlers(); return; }
+  // Nếu môn học đang xem vừa bị xoá (vd: phụ huynh xoá rồi quay lại), quay về danh sách môn học.
+  if(state.view === 'assignments' && !state.subjects.find(x=>x.id===state.currentSubject)){
+    state.view = 'subjects';
+  }
   let body = '';
   if(state.view === 'parent-home') body = renderParentHome();
   else if(state.view === 'subjects') body = renderSubjects();
@@ -329,6 +363,9 @@ function attachParentHomeHandlers(){
     el.onclick = async () => {
       state.currentChildId = el.dataset.child;
       state.currentChildName = el.dataset.name;
+      $loading.classList.remove('hidden'); $app.classList.add('hidden');
+      await loadSubjectsFor(state.currentChildId);
+      $loading.classList.add('hidden'); $app.classList.remove('hidden');
       state.view = 'subjects';
       render();
     };
@@ -536,35 +573,62 @@ function openJoinFamilyModal(){
 
 /* ================= SUBJECTS ================= */
 function renderSubjects(){
-  const cards = Object.entries(SUBJECTS).map(([key, s]) => `
-    <div class="door-card ${s.cls}" data-subject="${key}">
-      <svg class="blob" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="#fff"/></svg>
-      <div class="icon" style="color:#fff">${s.icon}</div>
-      <h3>${s.name}</h3>
-      <div class="desc">Xem bài tập môn ${s.name.toLowerCase()}</div>
-    </div>`).join('');
+  const isParent = state.userDoc.role === 'parent';
+  const list = [...state.subjects].sort((a,b)=> (a.createdAt?.seconds||0) - (b.createdAt?.seconds||0));
 
-  const crumbs = state.userDoc.role === 'parent' ? `
+  const cards = list.map(s => {
+    const icon = SUBJECT_ICONS[s.icon] || SUBJECT_ICONS.book;
+    const deep = shadeColor(s.color, -0.22);
+    return `
+    <div class="door-card" data-subject="${s.id}" style="background:linear-gradient(160deg, ${s.color} 0%, ${deep} 100%);">
+      ${isParent ? `
+        <div class="door-actions">
+          <button class="door-icon-btn" data-edit-subject="${s.id}" title="Sửa môn học">✏️</button>
+          <button class="door-icon-btn" data-delete-subject="${s.id}" title="Xoá môn học">🗑️</button>
+        </div>` : ''}
+      <svg class="blob" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="#fff"/></svg>
+      <div class="icon" style="color:#fff">${icon}</div>
+      <h3>${escapeHtml(s.name)}</h3>
+      <div class="desc">Xem bài tập môn ${escapeHtml(s.name.toLowerCase())}</div>
+    </div>`;
+  }).join('');
+
+  const addCard = isParent ? `
+    <div class="door-card add-subject-card" id="addSubjectBtn">
+      <div class="plus">＋</div>
+      <div>Tạo môn học</div>
+    </div>` : '';
+
+  const crumbs = isParent ? `
     <div class="crumbs">
       <button class="crumb-btn" id="toHomeBtn">👨‍👩‍👧 Các con</button>
       <span class="crumb-sep">›</span>
       <span class="crumb-btn" style="background:var(--purple);color:#fff;">${escapeHtml(state.currentChildName)}</span>
     </div>` : '';
 
+  const gridOrEmpty = (list.length || isParent) ? `
+    <div class="subject-grid">${cards}${addCard}</div>` : `
+    <div class="empty">
+      <svg viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="46" fill="#F1EEFB"/><path d="M35 45 Q50 35 65 45" stroke="var(--purple)" stroke-width="4" fill="none" stroke-linecap="round"/><circle cx="40" cy="55" r="4" fill="var(--purple)"/><circle cx="60" cy="55" r="4" fill="var(--purple)"/></svg>
+      <p>Ba mẹ chưa tạo môn học nào cho con cả 🎈</p>
+    </div>`;
+
   return `
     ${crumbs}
     <div class="hero">
-      <h2>${state.userDoc.role==='parent' ? escapeHtml(state.currentChildName)+' học môn gì hôm nay?' : 'Chào bạn nhỏ! Học môn gì nào? 🎈'}</h2>
-      <p>Chọn một cánh cửa để xem bài tập</p>
+      <h2>${isParent ? escapeHtml(state.currentChildName)+' học môn gì hôm nay?' : 'Chào bạn nhỏ! Học môn gì nào? 🎈'}</h2>
+      <p>${isParent ? 'Chọn một cánh cửa để xem bài tập, hoặc tạo môn học mới' : 'Chọn một cánh cửa để xem bài tập'}</p>
     </div>
-    <div class="subject-grid">${cards}</div>`;
+    ${gridOrEmpty}`;
 }
 
 function attachSubjectsHandlers(){
   const toHome = document.getElementById('toHomeBtn');
   if(toHome) toHome.onclick = () => { state.view = 'parent-home'; render(); };
-  document.querySelectorAll('.door-card').forEach(el => {
-    el.onclick = async () => {
+
+  document.querySelectorAll('.door-card[data-subject]').forEach(el => {
+    el.onclick = async (e) => {
+      if(e.target.closest('[data-edit-subject]') || e.target.closest('[data-delete-subject]')) return;
       state.currentSubject = el.dataset.subject;
       $loading.classList.remove('hidden'); $app.classList.add('hidden');
       await loadAssignmentsFor(state.currentChildId);
@@ -573,11 +637,160 @@ function attachSubjectsHandlers(){
       render();
     };
   });
+  document.querySelectorAll('[data-edit-subject]').forEach(btn => {
+    btn.onclick = (e) => { e.stopPropagation(); openEditSubjectModal(btn.dataset.editSubject); };
+  });
+  document.querySelectorAll('[data-delete-subject]').forEach(btn => {
+    btn.onclick = (e) => { e.stopPropagation(); confirmDeleteSubject(btn.dataset.deleteSubject); };
+  });
+  const addBtn = document.getElementById('addSubjectBtn');
+  if(addBtn) addBtn.onclick = openCreateSubjectModal;
+}
+
+function iconPickerHtml(selected){
+  return Object.keys(SUBJECT_ICONS).map(key => `
+    <button type="button" class="icon-pick-btn ${key===selected?'active':''}" data-icon="${key}">${SUBJECT_ICONS[key]}</button>
+  `).join('');
+}
+function colorPickerHtml(selected){
+  return SUBJECT_COLORS.map(c => `
+    <button type="button" class="color-pick-btn ${c===selected?'active':''}" data-color="${c}" style="background:${c};"></button>
+  `).join('');
+}
+function wirePickers(getSelected, setIcon, setColor){
+  document.querySelectorAll('#iconPicker [data-icon]').forEach(b => {
+    b.onclick = () => {
+      setIcon(b.dataset.icon);
+      document.querySelectorAll('#iconPicker [data-icon]').forEach(x => x.classList.toggle('active', x===b));
+    };
+  });
+  document.querySelectorAll('#colorPicker [data-color]').forEach(b => {
+    b.onclick = () => {
+      setColor(b.dataset.color);
+      document.querySelectorAll('#colorPicker [data-color]').forEach(x => x.classList.toggle('active', x===b));
+    };
+  });
+}
+
+/* ---- create subject (parent-only) ---- */
+function openCreateSubjectModal(){
+  let selectedIcon = 'book';
+  let selectedColor = SUBJECT_COLORS[0];
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="overlay" id="ov">
+      <div class="modal">
+        <h3>📚 Tạo môn học mới</h3>
+        <div class="field"><label>Tên môn học</label><input id="sName" placeholder="Ví dụ: Toán, Vẽ, Âm nhạc, Khoa học..." maxlength="40"/></div>
+        <div class="field"><label>Chọn biểu tượng</label><div class="icon-picker" id="iconPicker">${iconPickerHtml(selectedIcon)}</div></div>
+        <div class="field"><label>Chọn màu sắc</label><div class="color-picker" id="colorPicker">${colorPickerHtml(selectedColor)}</div></div>
+        <div id="sErr"></div>
+        <div class="modal-actions">
+          <button class="btn-cancel" id="cancelBtn">Huỷ</button>
+          <button class="btn-save" id="saveBtn">Tạo môn học</button>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('cancelBtn').onclick = closeModal;
+  document.getElementById('ov').onclick = (e)=>{ if(e.target.id==='ov') closeModal(); };
+  wirePickers(null, (v)=>selectedIcon=v, (v)=>selectedColor=v);
+
+  document.getElementById('saveBtn').onclick = async () => {
+    const name = document.getElementById('sName').value.trim();
+    const errBox = document.getElementById('sErr');
+    if(!name){ errBox.innerHTML = `<div class="error-msg">Vui lòng nhập tên môn học.</div>`; return; }
+    const saveBtn = document.getElementById('saveBtn');
+    saveBtn.disabled = true; saveBtn.textContent = 'Đang lưu...';
+    try{
+      await addDoc(collection(db,'subjects'), {
+        name,
+        icon: selectedIcon,
+        color: selectedColor,
+        studentId: state.currentChildId,
+        createdBy: state.user.uid,
+        createdAt: serverTimestamp()
+      });
+      await loadSubjectsFor(state.currentChildId);
+      closeModal(); render();
+      showToast('Đã tạo môn học mới! 🎉');
+    }catch(e){
+      errBox.innerHTML = `<div class="error-msg">Không lưu được, thử lại nhé.</div>`;
+      saveBtn.disabled = false; saveBtn.textContent = 'Tạo môn học';
+    }
+  };
+}
+
+/* ---- edit subject (parent-only) ---- */
+function openEditSubjectModal(subjectId){
+  const subj = state.subjects.find(x=>x.id===subjectId);
+  if(!subj) return;
+  let selectedIcon = subj.icon;
+  let selectedColor = subj.color;
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="overlay" id="ov">
+      <div class="modal">
+        <h3>✏️ Sửa môn học</h3>
+        <div class="field"><label>Tên môn học</label><input id="sName" value="${escapeHtml(subj.name)}" maxlength="40"/></div>
+        <div class="field"><label>Chọn biểu tượng</label><div class="icon-picker" id="iconPicker">${iconPickerHtml(selectedIcon)}</div></div>
+        <div class="field"><label>Chọn màu sắc</label><div class="color-picker" id="colorPicker">${colorPickerHtml(selectedColor)}</div></div>
+        <div id="sErr"></div>
+        <div class="modal-actions">
+          <button class="btn-cancel" id="cancelBtn">Huỷ</button>
+          <button class="btn-save" id="saveBtn">Lưu thay đổi</button>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('cancelBtn').onclick = closeModal;
+  document.getElementById('ov').onclick = (e)=>{ if(e.target.id==='ov') closeModal(); };
+  wirePickers(null, (v)=>selectedIcon=v, (v)=>selectedColor=v);
+
+  document.getElementById('saveBtn').onclick = async () => {
+    const name = document.getElementById('sName').value.trim();
+    const errBox = document.getElementById('sErr');
+    if(!name){ errBox.innerHTML = `<div class="error-msg">Vui lòng nhập tên môn học.</div>`; return; }
+    const saveBtn = document.getElementById('saveBtn');
+    saveBtn.disabled = true; saveBtn.textContent = 'Đang lưu...';
+    try{
+      await updateDoc(doc(db,'subjects',subjectId), { name, icon: selectedIcon, color: selectedColor });
+      await loadSubjectsFor(state.currentChildId);
+      closeModal(); render();
+      showToast('Đã cập nhật môn học! ✅');
+    }catch(e){
+      errBox.innerHTML = `<div class="error-msg">Không lưu được, thử lại nhé.</div>`;
+      saveBtn.disabled = false; saveBtn.textContent = 'Lưu thay đổi';
+    }
+  };
+}
+
+async function confirmDeleteSubject(subjectId){
+  const subj = state.subjects.find(x=>x.id===subjectId);
+  if(!subj) return;
+  if(!confirm(`Xoá môn học "${subj.name}"? Toàn bộ bài tập trong môn này cũng sẽ bị xoá. Hành động này không thể hoàn tác.`)) return;
+  try{
+    // Chỉ lọc theo studentId (index đơn) rồi lọc "subject" ở phía client,
+    // để không cần tạo composite index trên Firestore.
+    const snap = await getDocs(query(collection(db,'assignments'), where('studentId','==', state.currentChildId)));
+    const toDelete = snap.docs.filter(d => d.data().subject === subjectId);
+    for(const d of toDelete){
+      await deleteDoc(doc(db,'assignments', d.id));
+      try{ await deleteDoc(doc(db,'submissions', d.id)); }catch(e){}
+    }
+    await deleteDoc(doc(db,'subjects', subjectId));
+    await loadSubjectsFor(state.currentChildId);
+    render();
+    showToast('Đã xoá môn học');
+  }catch(e){
+    console.error('Lỗi khi xoá môn học:', e);
+    showToast('Không xoá được môn học, thử lại nhé.');
+  }
 }
 
 /* ================= ASSIGNMENTS ================= */
 function renderAssignments(){
-  const s = SUBJECTS[state.currentSubject];
+  const s = state.subjects.find(x=>x.id===state.currentSubject);
+  const icon = SUBJECT_ICONS[s.icon] || SUBJECT_ICONS.book;
+  const badgeBg = hexToRgba(s.color, 0.18);
   const list = state.assignments
     .filter(a => a.subject === state.currentSubject)
     .sort((a,b)=> (a.dueDate||'').localeCompare(b.dueDate||''));
@@ -587,7 +800,7 @@ function renderAssignments(){
       ${state.userDoc.role==='parent' ? `<button class="crumb-btn" id="toHomeBtn">👨‍👩‍👧 Các con</button><span class="crumb-sep">›</span>` : ''}
       <button class="crumb-btn" id="toSubjectsBtn">${state.userDoc.role==='parent' ? escapeHtml(state.currentChildName) : '🏠 Môn học'}</button>
       <span class="crumb-sep">›</span>
-      <span class="crumb-btn" style="background:${s.color};color:#fff;">${s.name}</span>
+      <span class="crumb-btn" style="background:${s.color};color:#fff;">${escapeHtml(s.name)}</span>
     </div>`;
 
   const itemsHtml = list.length ? list.map(a => {
@@ -640,7 +853,7 @@ function renderAssignments(){
       </div>`;
   }).join('') : `
     <div class="empty">
-      <svg viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="46" fill="${s.badgeBg}"/><path d="M35 45 Q50 35 65 45" stroke="${s.color}" stroke-width="4" fill="none" stroke-linecap="round"/><circle cx="40" cy="55" r="4" fill="${s.color}"/><circle cx="60" cy="55" r="4" fill="${s.color}"/></svg>
+      <svg viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="46" fill="${badgeBg}"/><path d="M35 45 Q50 35 65 45" stroke="${s.color}" stroke-width="4" fill="none" stroke-linecap="round"/><circle cx="40" cy="55" r="4" fill="${s.color}"/><circle cx="60" cy="55" r="4" fill="${s.color}"/></svg>
       <p>${state.userDoc.role==='parent' ? 'Chưa có bài tập nào — hãy tạo bài đầu tiên!' : 'Chưa có bài tập nào ở đây cả 🎉'}</p>
     </div>`;
 
@@ -648,10 +861,10 @@ function renderAssignments(){
     ${crumbs}
     <div class="subject-header">
       <div class="subject-title">
-        <div class="icon-badge" style="background:${s.badgeBg}; color:${s.color};">
-          <svg width="26" height="26" viewBox="0 0 60 60">${s.icon}</svg>
+        <div class="icon-badge" style="background:${badgeBg}; color:${s.color};">
+          <svg width="26" height="26" viewBox="0 0 60 60">${icon}</svg>
         </div>
-        <h2>${s.name}</h2>
+        <h2>${escapeHtml(s.name)}</h2>
       </div>
       ${state.userDoc.role==='parent' ? `<button class="add-btn" id="openCreate">+ Tạo bài tập</button>` : ''}
     </div>
@@ -681,12 +894,12 @@ function openZoom(url){
 
 /* ---- create assignment ---- */
 function openCreateAssignmentModal(){
-  const s = SUBJECTS[state.currentSubject];
+  const s = state.subjects.find(x=>x.id===state.currentSubject);
   const root = document.getElementById('modalRoot');
   root.innerHTML = `
     <div class="overlay" id="ov">
       <div class="modal">
-        <h3>✏️ Tạo bài tập — ${s.name}</h3>
+        <h3>✏️ Tạo bài tập — ${escapeHtml(s.name)}</h3>
         <div class="field"><label>Tên bài tập</label><input id="fTitle" placeholder="Ví dụ: Làm 10 phép cộng trang 12" maxlength="80"/></div>
         <div class="field"><label>Mô tả / yêu cầu</label><textarea id="fDesc" placeholder="Mô tả ngắn gọn cho bé..." maxlength="300"></textarea></div>
         <div class="field"><label>Hạn nộp</label><input id="fDue" type="date"/></div>
