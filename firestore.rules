@@ -27,9 +27,18 @@ service cloud.firestore {
       allow read: if isSignedIn() && (
         request.auth.uid == userId || isParentOf(userId)
       );
-      // Tạo hồ sơ: chỉ được tạo hồ sơ của chính uid mình (áp dụng cho cả
-      // phụ huynh tự đăng ký và tài khoản con được tạo qua secondary app).
-      allow create: if isSignedIn() && request.auth.uid == userId;
+      // Tạo hồ sơ: được tạo hồ sơ của chính uid mình (áp dụng khi phụ huynh
+      // tự đăng ký), HOẶC một phụ huynh đã đăng nhập tạo hồ sơ role="student"
+      // cho con mình (tài khoản con được tạo qua secondary app, nhưng hồ sơ
+      // Firestore được ghi trong khi phiên đăng nhập chính vẫn là phụ huynh).
+      allow create: if isSignedIn() && (
+        request.auth.uid == userId ||
+        (
+          myUser().role == 'parent' &&
+          request.resource.data.role == 'student' &&
+          request.resource.data.parentId == request.auth.uid
+        )
+      );
       // Cập nhật: chủ tài khoản tự sửa, hoặc phụ huynh cập nhật field
       // "children" (thêm con) trên chính hồ sơ mình — đã khớp ở điều kiện create/update phía trên.
       allow update: if isSignedIn() && request.auth.uid == userId;

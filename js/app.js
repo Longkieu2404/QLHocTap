@@ -138,6 +138,12 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 async function loadChildren(){
+  // Luôn lấy lại hồ sơ phụ huynh MỚI NHẤT từ Firestore trước, vì mảng "children"
+  // trong bộ nhớ (state.userDoc) có thể đã lỗi thời sau khi vừa thêm/xoá con —
+  // nếu không làm bước này, giao diện sẽ không cập nhật cho tới khi tải lại trang.
+  const freshSnap = await getDoc(doc(db,'users', state.user.uid));
+  if(freshSnap.exists()){ state.userDoc = freshSnap.data(); }
+
   const ids = state.userDoc.children || [];
   const results = [];
   for(const id of ids){
