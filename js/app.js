@@ -432,15 +432,13 @@ async function createInviteForChild(childId, childName){
 // Một phụ huynh (đã có tài khoản Phụ huynh) nhập mã mời để tự liên kết mình
 // làm đồng phụ huynh của bé tương ứng. Ghi cùng lúc (batch) vào hồ sơ bé
 // (thêm mình vào parentIds) và hồ sơ chính mình (thêm bé vào children).
+// LƯU Ý: không được đọc trước hồ sơ users/{studentId} ở đây để "kiểm tra đã
+// liên kết chưa" — theo Firestore Rules, phụ huynh CHƯA liên kết không có
+// quyền đọc hồ sơ của bé đó, nên việc đọc trước sẽ luôn bị permission-denied.
 async function acceptInviteCode(code){
   const inviteSnap = await getDoc(doc(db,'invites',code));
   if(!inviteSnap.exists()) throw new Error('invite-not-found');
   const { studentId } = inviteSnap.data();
-
-  const studentSnap = await getDoc(doc(db,'users',studentId));
-  if(studentSnap.exists() && (studentSnap.data().parentIds||[]).includes(state.user.uid)){
-    throw new Error('already-linked');
-  }
 
   const batch = writeBatch(db);
   batch.update(doc(db,'users', studentId), {
@@ -485,8 +483,12 @@ function openInviteChildModal(childId, childName){
         showToast('Không sao chép được, hãy chọn và copy mã thủ công.');
       }
     };
-  }).catch(()=>{
-    document.getElementById('iErr').innerHTML = `<div class="error-msg">Không tạo được mã mời, thử lại nhé.</div>`;
+  }).catch((e)=>{
+    // Log lỗi thật ra console để dễ chẩn đoán (vd: permission-denied nghĩa là
+    // Firestore Rules trên Firebase Console chưa được cập nhật bản mới nhất).
+    console.error('Lỗi khi tạo mã mời:', e);
+    const box = document.getElementById('iErr');
+    if(box) box.innerHTML = `<div class="error-msg">Không tạo được mã mời, thử lại nhé.${e?.code === 'permission-denied' ? ' (Có thể Firestore Rules chưa được cập nhật — kiểm tra Firebase Console.)' : ''}</div>`;
   });
 }
 
@@ -519,11 +521,14 @@ function openJoinFamilyModal(){
       closeModal(); render();
       showToast('Đã tham gia quản lý bé! 🎉');
     }catch(e){
+      console.error('Lỗi khi tham gia bằng mã mời:', e);
       const msgMap = {
-        'invite-not-found': 'Mã mời không tồn tại hoặc đã hết hạn.',
-        'already-linked': 'Bạn đã là phụ huynh của bé này rồi.'
+        'invite-not-found': 'Mã mời không tồn tại hoặc đã hết hạn.'
       };
-      errBox.innerHTML = `<div class="error-msg">${escapeHtml(msgMap[e.message] || 'Không tham gia được, kiểm tra lại mã và thử lại.')}</div>`;
+      const fallback = e?.code === 'permission-denied'
+        ? 'Không tham gia được — mã có thể sai/đã bị thu hồi, hoặc bạn đã là phụ huynh của bé này rồi. (Nếu vừa cập nhật Firestore Rules, hãy chắc chắn đã bấm Publish và thử lại.)'
+        : 'Không tham gia được, kiểm tra lại mã và thử lại.';
+      errBox.innerHTML = `<div class="error-msg">${escapeHtml(msgMap[e.message] || fallback)}</div>`;
       saveBtn.disabled = false; saveBtn.textContent = 'Tham gia';
     }
   };
