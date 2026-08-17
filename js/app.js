@@ -84,20 +84,50 @@ onAuthStateChanged(auth, async (user) => {
   $app.classList.add('hidden');
   state.user = user;
   if(user){
-    const snap = await getDoc(doc(db,'users',user.uid));
-    if(!snap.exists()){
-      showToast('Không tìm thấy hồ sơ người dùng.');
-      await signOut(auth);
+    try{
+      const snap = await getDoc(doc(db,'users',user.uid));
+      if(!snap.exists()){
+        // Tài khoản Auth tồn tại nhưng KHÔNG có hồ sơ trong Firestore (users/{uid}).
+        // Trường hợp này xảy ra khi đăng nhập bằng một tài khoản chưa từng được
+        // tạo đúng quy trình (vd: qua "Đăng ký (Phụ huynh)" hoặc "Thêm con").
+        // => Không cho vào app, luôn đăng xuất ngay lập tức.
+        showToast('Tài khoản này chưa có hồ sơ hợp lệ. Học sinh cần được phụ huynh tạo tài khoản trước.');
+        state.user = null;
+        await signOut(auth);
+        $loading.classList.add('hidden');
+        $app.classList.remove('hidden');
+        render();
+        return;
+      }
+      state.userDoc = snap.data();
+      if(state.userDoc.role === 'student'){
+        state.currentChildId = user.uid;
+        state.currentChildName = state.userDoc.name;
+        state.view = 'subjects';
+      } else if(state.userDoc.role === 'parent'){
+        await loadChildren();
+        state.view = 'parent-home';
+      } else {
+        // role không hợp lệ / dữ liệu bất thường — không cho vào app.
+        showToast('Tài khoản không hợp lệ.');
+        state.user = null;
+        await signOut(auth);
+        $loading.classList.add('hidden');
+        $app.classList.remove('hidden');
+        render();
+        return;
+      }
+    }catch(e){
+      // Bất kỳ lỗi nào khi xác thực hồ sơ (mạng, quyền truy cập Firestore,...)
+      // đều phải chặn truy cập — không có ngoại lệ "mở cửa" nào cả.
+      console.error('Lỗi khi tải hồ sơ người dùng:', e);
+      showToast('Không xác thực được tài khoản, vui lòng đăng nhập lại.');
+      state.user = null;
+      try{ await signOut(auth); }catch(_e){}
+      $loading.classList.add('hidden');
+      $app.classList.remove('hidden');
+      render();
       return;
-    }
-    state.userDoc = snap.data();
-    if(state.userDoc.role === 'student'){
-      state.currentChildId = user.uid;
-      state.currentChildName = state.userDoc.name;
-      state.view = 'subjects';
-    } else {
-      await loadChildren();
-      state.view = 'parent-home';
     }
   } else {
     state = { ...state, userDoc:null, children:[], currentChildId:null, currentSubject:null, view:'login' };
@@ -217,6 +247,8 @@ function attachLoginHandlers(){
       authError='';
     }catch(e){
       authError = friendlyAuthError(e);
+      // Phòng vệ: đảm bảo chắc chắn không còn phiên đăng nhập nào sót lại.
+      try{ await signOut(auth); }catch(_e){}
       render();
     }
   };
