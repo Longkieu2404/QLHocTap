@@ -826,9 +826,10 @@ function renderAssignments(){
 
     let submissionBlock = '';
     if(done){
+      const photos = getSubmissionPhotos(sub);
       submissionBlock = `
         <div class="submission-block">
-          ${sub.photoURL ? `<img src="${sub.photoURL}" class="submission-photo" data-zoom="${sub.photoURL}"/>` : ''}
+          ${photos.length ? `<div class="submission-photos">${photos.map(u => `<img src="${u}" class="submission-photo" data-zoom="${u}"/>`).join('')}</div>` : ''}
           <div class="submission-meta">
             ${sub.note ? `<div class="note">"${escapeHtml(sub.note)}"</div>` : ''}
             ${graded ? `
@@ -898,6 +899,15 @@ function attachAssignmentsHandlers(){
   document.querySelectorAll('[data-zoom]').forEach(img => img.onclick = () => openZoom(img.dataset.zoom));
 }
 
+/* Lấy danh sách ảnh của một bài nộp — hỗ trợ cả bài nộp cũ (chỉ 1 ảnh,
+   field "photoURL") lẫn bài nộp mới (nhiều ảnh, field "photoURLs"). */
+function getSubmissionPhotos(sub){
+  if(!sub) return [];
+  if(Array.isArray(sub.photoURLs) && sub.photoURLs.length) return sub.photoURLs;
+  if(sub.photoURL) return [sub.photoURL];
+  return [];
+}
+
 function openZoom(url){
   const root = document.getElementById('modalRoot');
   root.innerHTML = `<div class="zoom-overlay" id="zov"><img src="${url}"/></div>`;
@@ -958,18 +968,18 @@ async function confirmDeleteAssignment(id){
   showToast('Đã xoá bài tập');
 }
 
-/* ---- student: submit via photo ---- */
+/* ---- student: submit via photo(s) ---- */
 function openSubmitModal(assignmentId){
   const a = state.assignments.find(x=>x.id===assignmentId);
-  let selectedFile = null;
+  let selectedFiles = [];
   const root = document.getElementById('modalRoot');
   root.innerHTML = `
     <div class="overlay" id="ov">
       <div class="modal">
         <h3>📷 Nộp bài: ${escapeHtml(a.title)}</h3>
-        <img id="preview" class="photo-preview hidden"/>
-        <label class="photo-input-btn" id="pickBtn">📸 Chụp hoặc chọn ảnh bài làm
-          <input type="file" accept="image/*" capture="environment" id="fileInput" style="display:none;"/>
+        <div class="photo-preview-grid hidden" id="previewGrid"></div>
+        <label class="photo-input-btn" id="pickBtn">📸 Chụp hoặc chọn ảnh bài làm (chọn được nhiều ảnh)
+          <input type="file" accept="image/*" multiple id="fileInput" style="display:none;"/>
         </label>
         <div class="field"><label>Ghi chú cho ba mẹ (không bắt buộc)</label><textarea id="fNote" placeholder="Con đã làm xong bài này..." maxlength="300"></textarea></div>
         <div class="upload-progress hidden" id="progWrap"><div class="upload-progress-bar" id="progBar"></div></div>
@@ -983,30 +993,49 @@ function openSubmitModal(assignmentId){
   document.getElementById('cancelBtn').onclick = closeModal;
   document.getElementById('ov').onclick = (e)=>{ if(e.target.id==='ov') closeModal(); };
 
+  function renderPreview(){
+    const grid = document.getElementById('previewGrid');
+    if(!selectedFiles.length){ grid.classList.add('hidden'); grid.innerHTML=''; return; }
+    grid.classList.remove('hidden');
+    grid.innerHTML = selectedFiles.map((f, i) => `
+      <div class="preview-thumb">
+        <img src="${URL.createObjectURL(f)}"/>
+        <button type="button" class="preview-remove" data-i="${i}" title="Bỏ ảnh này">✕</button>
+      </div>`).join('') + `<div class="preview-count">${selectedFiles.length} ảnh đã chọn</div>`;
+    grid.querySelectorAll('.preview-remove').forEach(btn => {
+      btn.onclick = () => {
+        selectedFiles.splice(parseInt(btn.dataset.i), 1);
+        renderPreview();
+      };
+    });
+  }
+
   const fileInput = document.getElementById('fileInput');
   fileInput.onchange = () => {
-    const f = fileInput.files[0];
-    if(!f) return;
-    selectedFile = f;
-    const preview = document.getElementById('preview');
-    preview.src = URL.createObjectURL(f);
-    preview.classList.remove('hidden');
+    if(fileInput.files && fileInput.files.length){
+      selectedFiles = Array.from(fileInput.files);
+      renderPreview();
+    }
   };
 
   document.getElementById('saveBtn').onclick = async () => {
     const errBox = document.getElementById('sErr');
-    if(!selectedFile){ errBox.innerHTML = `<div class="error-msg">Vui lòng chọn hoặc chụp một ảnh bài làm.</div>`; return; }
+    if(!selectedFiles.length){ errBox.innerHTML = `<div class="error-msg">Vui lòng chọn hoặc chụp ít nhất một ảnh bài làm.</div>`; return; }
     const saveBtn = document.getElementById('saveBtn');
     saveBtn.disabled = true; saveBtn.textContent = 'Đang tải ảnh...';
     document.getElementById('progWrap').classList.remove('hidden');
+    const progBar = document.getElementById('progBar');
     try{
-      document.getElementById('progBar').style.width = '40%';
-      const url = await uploadToCloudinary(selectedFile);
-      document.getElementById('progBar').style.width = '100%';
+      const urls = [];
+      for(let i=0; i<selectedFiles.length; i++){
+        const url = await uploadToCloudinary(selectedFiles[i]);
+        urls.push(url);
+        progBar.style.width = Math.round(((i+1)/selectedFiles.length)*100) + '%';
+      }
       await setDoc(doc(db,'submissions',assignmentId), {
         assignmentId,
         studentId: state.user.uid,
-        photoURL: url,
+        photoURLs: urls,
         note: document.getElementById('fNote').value.trim(),
         submittedAt: serverTimestamp(),
         grade: null,
@@ -1014,7 +1043,7 @@ function openSubmitModal(assignmentId){
       });
       await loadAssignmentsFor(state.currentChildId);
       closeModal(); render();
-      showToast('Tuyệt vời! Bé đã nộp bài 🌟');
+      showToast(`Tuyệt vời! Bé đã nộp ${urls.length} ảnh bài làm 🌟`);
     }catch(e){
       errBox.innerHTML = `<div class="error-msg">Không nộp được bài, kiểm tra kết nối mạng và thử lại.</div>`;
       saveBtn.disabled = false; saveBtn.textContent = 'Nộp bài ✅';
@@ -1026,12 +1055,13 @@ function openSubmitModal(assignmentId){
 function openGradeModal(assignmentId){
   const a = state.assignments.find(x=>x.id===assignmentId);
   const sub = state.submissions[assignmentId] || {};
+  const photos = getSubmissionPhotos(sub);
   const root = document.getElementById('modalRoot');
   root.innerHTML = `
     <div class="overlay" id="ov">
       <div class="modal">
         <h3>📝 Chấm điểm: ${escapeHtml(a.title)}</h3>
-        ${sub.photoURL ? `<img src="${sub.photoURL}" class="photo-preview" style="cursor:zoom-in;" id="gradePhoto"/>` : ''}
+        ${photos.length ? `<div class="grade-photos">${photos.map((u,i) => `<img src="${u}" data-grade-photo="${i}"/>`).join('')}</div>` : ''}
         ${sub.note ? `<p class="field-hint" style="margin-bottom:10px;">Ghi chú của bé: "${escapeHtml(sub.note)}"</p>` : ''}
         <div class="field"><label>Điểm (0–10)</label><input id="gGrade" type="number" min="0" max="10" step="0.5" value="${sub.grade ?? ''}"/></div>
         <div class="field"><label>Nhận xét</label><textarea id="gFeedback" placeholder="Con làm rất tốt! Lần sau chú ý..." maxlength="300">${escapeHtml(sub.feedback||'')}</textarea></div>
@@ -1044,8 +1074,9 @@ function openGradeModal(assignmentId){
     </div>`;
   document.getElementById('cancelBtn').onclick = closeModal;
   document.getElementById('ov').onclick = (e)=>{ if(e.target.id==='ov') closeModal(); };
-  const photo = document.getElementById('gradePhoto');
-  if(photo) photo.onclick = () => openZoom(sub.photoURL);
+  document.querySelectorAll('[data-grade-photo]').forEach(img => {
+    img.onclick = () => openZoom(photos[parseInt(img.dataset.gradePhoto)]);
+  });
 
   document.getElementById('saveBtn').onclick = async () => {
     const gradeVal = parseFloat(document.getElementById('gGrade').value);

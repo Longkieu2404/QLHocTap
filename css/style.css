@@ -154,6 +154,7 @@ img{max-width:100%;}
 .del-btn{background:none; color:#C77; font-size:12.5px; font-weight:700; padding:6px 4px;}
 
 .submission-block{margin-top:14px; padding-top:14px; border-top:2px dashed #EFEAFB; display:flex; gap:14px; flex-wrap:wrap; align-items:flex-start;}
+.submission-photos{display:flex; flex-wrap:wrap; gap:8px; max-width:100%;}
 .submission-photo{width:90px; height:90px; border-radius:14px; object-fit:cover; box-shadow:var(--card-shadow); cursor:zoom-in;}
 .submission-meta{flex:1; min-width:180px;}
 .submission-meta .note{font-size:13px; color:var(--ink); font-weight:600; margin-bottom:6px;}
@@ -174,9 +175,20 @@ img{max-width:100%;}
 .btn-save{background:var(--purple); color:#fff; box-shadow:0 4px 0 var(--purple-deep);}
 .btn-save:active{transform:translateY(2px); box-shadow:0 2px 0 var(--purple-deep);}
 .photo-preview{width:100%; max-height:280px; object-fit:contain; border-radius:16px; margin-bottom:12px; background:#F6F4FC;}
-.photo-input-btn{display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:16px; border-radius:16px; border:2px dashed #CDBFF2; background:#F8F6FE; color:var(--purple-deep); font-weight:700; font-size:14.5px; cursor:pointer; margin-bottom:12px;}
+.photo-input-btn{display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:16px; border-radius:16px; border:2px dashed #CDBFF2; background:#F8F6FE; color:var(--purple-deep); font-weight:700; font-size:14.5px; cursor:pointer; margin-bottom:12px; text-align:center;}
 .upload-progress{height:8px; background:#EFEAFB; border-radius:999px; overflow:hidden; margin-bottom:12px;}
 .upload-progress-bar{height:100%; background:var(--teal); width:0%; transition:width .2s ease;}
+
+/* nhiều ảnh chọn để nộp bài (preview trước khi upload) */
+.photo-preview-grid{display:flex; flex-wrap:wrap; gap:10px; margin-bottom:12px; align-items:center;}
+.preview-thumb{position:relative; width:84px; height:84px; flex-shrink:0;}
+.preview-thumb img{width:100%; height:100%; object-fit:cover; border-radius:14px; box-shadow:var(--card-shadow);}
+.preview-remove{position:absolute; top:-7px; right:-7px; width:22px; height:22px; border-radius:50%; background:#FF6B6B; color:#fff; font-size:12px; line-height:1; display:flex; align-items:center; justify-content:center; box-shadow:var(--card-shadow); border:2px solid #fff;}
+.preview-count{font-size:12.5px; font-weight:700; color:var(--muted);}
+
+/* nhiều ảnh trong màn chấm điểm */
+.grade-photos{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;}
+.grade-photos img{width:100px; height:100px; object-fit:cover; border-radius:14px; box-shadow:var(--card-shadow); cursor:zoom-in;}
 .zoom-overlay{position:fixed; inset:0; background:rgba(20,17,35,0.85); display:flex; align-items:center; justify-content:center; z-index:60; padding:20px;}
 .zoom-overlay img{max-width:100%; max-height:90vh; border-radius:14px;}
 
