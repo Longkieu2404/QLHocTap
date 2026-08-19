@@ -819,8 +819,11 @@ function renderAssignments(){
     const sub = state.submissions[a.id];
     const done = !!sub;
     const graded = done && (sub.grade !== null && sub.grade !== undefined);
+    const needsRedo = done && !!sub.needsRedo;
+    const historyCount = done && Array.isArray(sub.history) ? sub.history.length : 0;
     let statusHtml;
-    if(graded) statusHtml = `<span class="status-pill graded">🏆 Đã chấm: ${sub.grade}/10</span>`;
+    if(needsRedo) statusHtml = `<span class="status-pill redo">🔁 Cần làm lại</span>`;
+    else if(graded) statusHtml = `<span class="status-pill graded">🏆 Đã chấm: ${sub.grade}/10</span>`;
     else if(done) statusHtml = `<span class="status-pill done">✅ Đã nộp, chờ chấm</span>`;
     else statusHtml = `<span class="status-pill pending">⏳ Chưa nộp</span>`;
 
@@ -832,21 +835,28 @@ function renderAssignments(){
           ${photos.length ? `<div class="submission-photos">${photos.map(u => `<img src="${u}" class="submission-photo" data-zoom="${u}"/>`).join('')}</div>` : ''}
           <div class="submission-meta">
             ${sub.note ? `<div class="note">"${escapeHtml(sub.note)}"</div>` : ''}
-            ${graded ? `
+            ${needsRedo ? `
+              <div class="redo-banner">🔁 Ba mẹ yêu cầu làm lại bài này${sub.redoNote ? ': "' + escapeHtml(sub.redoNote) + '"' : '.'}</div>
+            ` : graded ? `
               <div class="grade-badge">⭐ ${sub.grade}/10</div>
               ${sub.feedback ? `<div class="feedback-text">💬 ${escapeHtml(sub.feedback)}</div>` : ''}
             ` : `<div class="field-hint">${state.userDoc.role==='parent' ? 'Chưa chấm điểm bài này.' : 'Ba mẹ chưa chấm bài này.'}</div>`}
+            ${historyCount ? `<button class="ghost-btn" data-history="${a.id}">🕘 Xem ${historyCount} lần nộp trước</button>` : ''}
           </div>
         </div>`;
     }
 
     let actions = '';
-    if(state.userDoc.role === 'student' && !done){
-      actions = `<div class="assign-actions"><button class="action-btn" data-submit="${a.id}">📷 Nộp bài bằng ảnh</button></div>`;
+    if(state.userDoc.role === 'student'){
+      if(!done){
+        actions = `<div class="assign-actions"><button class="action-btn" data-submit="${a.id}">📷 Nộp bài bằng ảnh</button></div>`;
+      } else {
+        actions = `<div class="assign-actions"><button class="action-btn ${needsRedo ? '' : 'secondary'}" data-submit="${a.id}">🔄 ${needsRedo ? 'Nộp lại bài theo yêu cầu' : 'Nộp lại bài'}</button></div>`;
+      }
     }
     if(state.userDoc.role === 'parent'){
       actions = `<div class="assign-actions">
-        ${done ? `<button class="action-btn secondary" data-grade="${a.id}">${graded ? '✏️ Sửa điểm' : '📝 Chấm điểm'}</button>` : ''}
+        ${done ? `<button class="action-btn secondary" data-grade="${a.id}">${graded ? '✏️ Sửa điểm' : (needsRedo ? '🔁 Xem yêu cầu làm lại' : '📝 Chấm điểm')}</button>` : ''}
         <button class="del-btn" data-delete="${a.id}">Xoá bài tập</button>
       </div>`;
     }
@@ -897,6 +907,7 @@ function attachAssignmentsHandlers(){
   document.querySelectorAll('[data-grade]').forEach(btn => btn.onclick = () => openGradeModal(btn.dataset.grade));
   document.querySelectorAll('[data-delete]').forEach(btn => btn.onclick = () => confirmDeleteAssignment(btn.dataset.delete));
   document.querySelectorAll('[data-zoom]').forEach(img => img.onclick = () => openZoom(img.dataset.zoom));
+  document.querySelectorAll('[data-history]').forEach(btn => btn.onclick = () => openHistoryModal(btn.dataset.history));
 }
 
 /* Lấy danh sách ảnh của một bài nộp — hỗ trợ cả bài nộp cũ (chỉ 1 ảnh,
@@ -968,15 +979,61 @@ async function confirmDeleteAssignment(id){
   showToast('Đã xoá bài tập');
 }
 
+/* Ghi bài nộp (lần đầu hoặc nộp lại). Nếu đã có bài nộp trước đó, lưu bài cũ
+   vào mảng "history" trước khi ghi đè, và luôn đưa điểm/nhận xét/cờ "cần làm
+   lại" về rỗng — vì đây là một lượt nộp mới, chưa được chấm. */
+async function submitAssignmentWork(assignmentId, urls, note){
+  const subRef = doc(db,'submissions',assignmentId);
+  const existingSnap = await getDoc(subRef);
+  let history = [];
+  let attemptNumber = 1;
+  if(existingSnap.exists()){
+    const prev = existingSnap.data();
+    history = Array.isArray(prev.history) ? [...prev.history] : [];
+    const prevPhotos = getSubmissionPhotos(prev);
+    if(prevPhotos.length){
+      history.push({
+        photoURLs: prevPhotos,
+        note: prev.note || '',
+        submittedAt: prev.submittedAt || null,
+        grade: (prev.grade === undefined) ? null : prev.grade,
+        feedback: (prev.feedback === undefined) ? null : prev.feedback,
+        gradedAt: prev.gradedAt || null,
+        redoNote: prev.redoNote || null
+      });
+    }
+    attemptNumber = (prev.attemptNumber || 1) + 1;
+  }
+  await setDoc(subRef, {
+    assignmentId,
+    studentId: state.user.uid,
+    photoURLs: urls,
+    note,
+    submittedAt: serverTimestamp(),
+    grade: null,
+    feedback: null,
+    gradedAt: null,
+    needsRedo: false,
+    redoNote: null,
+    redoRequestedAt: null,
+    attemptNumber,
+    history
+  });
+}
+
 /* ---- student: submit via photo(s) ---- */
 function openSubmitModal(assignmentId){
   const a = state.assignments.find(x=>x.id===assignmentId);
+  const existingSub = state.submissions[assignmentId];
+  const isResubmit = !!existingSub;
   let selectedFiles = [];
   const root = document.getElementById('modalRoot');
   root.innerHTML = `
     <div class="overlay" id="ov">
       <div class="modal">
-        <h3>📷 Nộp bài: ${escapeHtml(a.title)}</h3>
+        <h3>📷 ${isResubmit ? 'Nộp lại bài' : 'Nộp bài'}: ${escapeHtml(a.title)}</h3>
+        ${existingSub && existingSub.needsRedo ? `<div class="redo-banner" style="margin-bottom:14px;">🔁 Ba mẹ yêu cầu làm lại${existingSub.redoNote ? ': "' + escapeHtml(existingSub.redoNote) + '"' : '.'}</div>` : ''}
+        ${isResubmit ? `<div class="field-hint" style="margin-bottom:12px;">Bài nộp trước sẽ được lưu vào lịch sử, không bị mất đâu nhé.</div>` : ''}
         <div class="photo-preview-grid hidden" id="previewGrid"></div>
         <label class="photo-input-btn" id="pickBtn">📸 Chụp hoặc chọn ảnh bài làm (chọn được nhiều ảnh)
           <input type="file" accept="image/*" multiple id="fileInput" style="display:none;"/>
@@ -986,7 +1043,7 @@ function openSubmitModal(assignmentId){
         <div id="sErr"></div>
         <div class="modal-actions">
           <button class="btn-cancel" id="cancelBtn">Huỷ</button>
-          <button class="btn-save" id="saveBtn">Nộp bài ✅</button>
+          <button class="btn-save" id="saveBtn">${isResubmit ? 'Nộp lại ✅' : 'Nộp bài ✅'}</button>
         </div>
       </div>
     </div>`;
@@ -1032,27 +1089,26 @@ function openSubmitModal(assignmentId){
         urls.push(url);
         progBar.style.width = Math.round(((i+1)/selectedFiles.length)*100) + '%';
       }
-      await setDoc(doc(db,'submissions',assignmentId), {
-        assignmentId,
-        studentId: state.user.uid,
-        photoURLs: urls,
-        note: document.getElementById('fNote').value.trim(),
-        submittedAt: serverTimestamp(),
-        grade: null,
-        feedback: null
-      });
+      await submitAssignmentWork(assignmentId, urls, document.getElementById('fNote').value.trim());
       await loadAssignmentsFor(state.currentChildId);
       closeModal(); render();
-      showToast(`Tuyệt vời! Bé đã nộp ${urls.length} ảnh bài làm 🌟`);
+      showToast(isResubmit ? `Đã nộp lại bài với ${urls.length} ảnh 🌟` : `Tuyệt vời! Bé đã nộp ${urls.length} ảnh bài làm 🌟`);
     }catch(e){
       errBox.innerHTML = `<div class="error-msg">Không nộp được bài, kiểm tra kết nối mạng và thử lại.</div>`;
-      saveBtn.disabled = false; saveBtn.textContent = 'Nộp bài ✅';
+      saveBtn.disabled = false; saveBtn.textContent = isResubmit ? 'Nộp lại ✅' : 'Nộp bài ✅';
     }
   };
 }
 
-/* ---- parent: grade + feedback ---- */
+/* ---- parent: grade + feedback, hoặc yêu cầu làm lại ---- */
+let gradeModalTab = 'grade'; // 'grade' | 'redo'
+
 function openGradeModal(assignmentId){
+  gradeModalTab = 'grade';
+  renderGradeModal(assignmentId);
+}
+
+function renderGradeModal(assignmentId){
   const a = state.assignments.find(x=>x.id===assignmentId);
   const sub = state.submissions[assignmentId] || {};
   const photos = getSubmissionPhotos(sub);
@@ -1060,15 +1116,24 @@ function openGradeModal(assignmentId){
   root.innerHTML = `
     <div class="overlay" id="ov">
       <div class="modal">
-        <h3>📝 Chấm điểm: ${escapeHtml(a.title)}</h3>
+        <h3>📝 Bài nộp: ${escapeHtml(a.title)}</h3>
         ${photos.length ? `<div class="grade-photos">${photos.map((u,i) => `<img src="${u}" data-grade-photo="${i}"/>`).join('')}</div>` : ''}
         ${sub.note ? `<p class="field-hint" style="margin-bottom:10px;">Ghi chú của bé: "${escapeHtml(sub.note)}"</p>` : ''}
-        <div class="field"><label>Điểm (0–10)</label><input id="gGrade" type="number" min="0" max="10" step="0.5" value="${sub.grade ?? ''}"/></div>
-        <div class="field"><label>Nhận xét</label><textarea id="gFeedback" placeholder="Con làm rất tốt! Lần sau chú ý..." maxlength="300">${escapeHtml(sub.feedback||'')}</textarea></div>
+        <div class="tabs" style="margin-bottom:16px;">
+          <button data-gtab="grade" class="${gradeModalTab==='grade'?'active':''}">Chấm điểm</button>
+          <button data-gtab="redo" class="${gradeModalTab==='redo'?'active':''}">Yêu cầu làm lại</button>
+        </div>
+        ${gradeModalTab === 'grade' ? `
+          <div class="field"><label>Điểm (0–10)</label><input id="gGrade" type="number" min="0" max="10" step="0.5" value="${sub.grade ?? ''}"/></div>
+          <div class="field"><label>Nhận xét</label><textarea id="gFeedback" placeholder="Con làm rất tốt! Lần sau chú ý..." maxlength="300">${escapeHtml(sub.feedback||'')}</textarea></div>
+        ` : `
+          <div class="field-hint" style="margin-bottom:10px;">Bài làm chưa đạt yêu cầu? Yêu cầu bé nộp lại — bài nộp hiện tại sẽ được lưu vào lịch sử, không bị mất.</div>
+          <div class="field"><label>Lý do / hướng dẫn cho bé (không bắt buộc)</label><textarea id="gRedoNote" placeholder="Con xem lại câu 3, làm lại nhé..." maxlength="300"></textarea></div>
+        `}
         <div id="gErr"></div>
         <div class="modal-actions">
           <button class="btn-cancel" id="cancelBtn">Huỷ</button>
-          <button class="btn-save" id="saveBtn">Lưu chấm điểm</button>
+          <button class="btn-save" id="saveBtn">${gradeModalTab === 'grade' ? 'Lưu chấm điểm' : 'Gửi yêu cầu làm lại'}</button>
         </div>
       </div>
     </div>`;
@@ -1077,29 +1142,86 @@ function openGradeModal(assignmentId){
   document.querySelectorAll('[data-grade-photo]').forEach(img => {
     img.onclick = () => openZoom(photos[parseInt(img.dataset.gradePhoto)]);
   });
+  document.querySelectorAll('[data-gtab]').forEach(btn => {
+    btn.onclick = () => { gradeModalTab = btn.dataset.gtab; renderGradeModal(assignmentId); };
+  });
 
   document.getElementById('saveBtn').onclick = async () => {
-    const gradeVal = parseFloat(document.getElementById('gGrade').value);
     const errBox = document.getElementById('gErr');
-    if(isNaN(gradeVal) || gradeVal < 0 || gradeVal > 10){
-      errBox.innerHTML = `<div class="error-msg">Điểm phải từ 0 đến 10.</div>`; return;
-    }
     const saveBtn = document.getElementById('saveBtn');
-    saveBtn.disabled = true; saveBtn.textContent = 'Đang lưu...';
-    try{
-      await updateDoc(doc(db,'submissions',assignmentId), {
-        grade: gradeVal,
-        feedback: document.getElementById('gFeedback').value.trim(),
-        gradedAt: serverTimestamp()
-      });
-      await loadAssignmentsFor(state.currentChildId);
-      closeModal(); render();
-      showToast('Đã lưu điểm & nhận xét! 🏆');
-    }catch(e){
-      errBox.innerHTML = `<div class="error-msg">Không lưu được, thử lại nhé.</div>`;
-      saveBtn.disabled = false; saveBtn.textContent = 'Lưu chấm điểm';
+
+    if(gradeModalTab === 'grade'){
+      const gradeVal = parseFloat(document.getElementById('gGrade').value);
+      if(isNaN(gradeVal) || gradeVal < 0 || gradeVal > 10){
+        errBox.innerHTML = `<div class="error-msg">Điểm phải từ 0 đến 10.</div>`; return;
+      }
+      saveBtn.disabled = true; saveBtn.textContent = 'Đang lưu...';
+      try{
+        await updateDoc(doc(db,'submissions',assignmentId), {
+          grade: gradeVal,
+          feedback: document.getElementById('gFeedback').value.trim(),
+          gradedAt: serverTimestamp(),
+          needsRedo: false,
+          redoNote: null,
+          redoRequestedAt: null
+        });
+        await loadAssignmentsFor(state.currentChildId);
+        closeModal(); render();
+        showToast('Đã lưu điểm & nhận xét! 🏆');
+      }catch(e){
+        errBox.innerHTML = `<div class="error-msg">Không lưu được, thử lại nhé.</div>`;
+        saveBtn.disabled = false; saveBtn.textContent = 'Lưu chấm điểm';
+      }
+    } else {
+      saveBtn.disabled = true; saveBtn.textContent = 'Đang gửi...';
+      try{
+        await updateDoc(doc(db,'submissions',assignmentId), {
+          needsRedo: true,
+          redoNote: document.getElementById('gRedoNote').value.trim(),
+          redoRequestedAt: serverTimestamp(),
+          grade: null,
+          feedback: null,
+          gradedAt: null
+        });
+        await loadAssignmentsFor(state.currentChildId);
+        closeModal(); render();
+        showToast('Đã gửi yêu cầu làm lại cho bé.');
+      }catch(e){
+        errBox.innerHTML = `<div class="error-msg">Không gửi được, thử lại nhé.</div>`;
+        saveBtn.disabled = false; saveBtn.textContent = 'Gửi yêu cầu làm lại';
+      }
     }
   };
+}
+
+/* ---- xem lịch sử các lần nộp trước (sau khi đã nộp lại) ---- */
+function openHistoryModal(assignmentId){
+  const a = state.assignments.find(x=>x.id===assignmentId);
+  const sub = state.submissions[assignmentId] || {};
+  const history = Array.isArray(sub.history) ? sub.history : [];
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="overlay" id="ov">
+      <div class="modal">
+        <h3>🕘 Lịch sử nộp bài: ${escapeHtml(a.title)}</h3>
+        ${history.length ? history.slice().reverse().map((h, i) => `
+          <div class="history-item">
+            <div class="history-title">Lần nộp thứ ${history.length - i}</div>
+            ${(h.photoURLs && h.photoURLs.length) ? `<div class="submission-photos">${h.photoURLs.map(u => `<img src="${u}" class="submission-photo" data-zoom="${u}"/>`).join('')}</div>` : ''}
+            ${h.note ? `<div class="note">"${escapeHtml(h.note)}"</div>` : ''}
+            ${(h.grade !== null && h.grade !== undefined) ? `<div class="grade-badge">⭐ ${h.grade}/10</div>` : ''}
+            ${h.feedback ? `<div class="feedback-text">💬 ${escapeHtml(h.feedback)}</div>` : ''}
+            ${h.redoNote ? `<div class="feedback-text">🔁 ${escapeHtml(h.redoNote)}</div>` : ''}
+          </div>
+        `).join('') : `<p class="field-hint">Chưa có lịch sử.</p>`}
+        <div class="modal-actions">
+          <button class="btn-cancel" id="cancelBtn" style="flex:1;">Đóng</button>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('cancelBtn').onclick = closeModal;
+  document.getElementById('ov').onclick = (e)=>{ if(e.target.id==='ov') closeModal(); };
+  root.querySelectorAll('[data-zoom]').forEach(img => img.onclick = () => openZoom(img.dataset.zoom));
 }
 
 function closeModal(){ document.getElementById('modalRoot').innerHTML = ''; }

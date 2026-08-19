@@ -132,12 +132,34 @@ service cloud.firestore {
         resource.data.studentId == request.auth.uid ||
         isParentOf(resource.data.studentId)
       );
-      // Học sinh tạo bài nộp cho chính mình
+      // Học sinh tạo bài nộp cho chính mình (lần nộp đầu tiên)
       allow create: if isSignedIn() &&
         request.resource.data.studentId == request.auth.uid &&
         get(/databases/$(database)/documents/assignments/$(assignmentId)).data.studentId == request.auth.uid;
-      // Bất kỳ phụ huynh nào liên kết với học sinh đó đều được chấm điểm / sửa / xoá.
-      allow update, delete: if isSignedIn() && isParentOf(resource.data.studentId);
+      allow update: if isSignedIn() && (
+        // Bất kỳ phụ huynh nào liên kết với học sinh đó đều được chấm điểm /
+        // yêu cầu làm lại / sửa / xoá.
+        isParentOf(resource.data.studentId)
+        ||
+        (
+          // Học sinh tự NỘP LẠI bài của chính mình. Bắt buộc điểm/nhận xét/
+          // trạng thái "cần làm lại" phải được đưa về rỗng — học sinh không
+          // được tự gán điểm cho mình hay tự xoá cờ "cần làm lại" một cách
+          // gian lận; việc reset các field này chỉ có ý nghĩa khi đi kèm với
+          // hành động nộp bài mới thật sự (ứng dụng luôn đặt các giá trị này
+          // về null/false mỗi lần học sinh nộp lại).
+          resource.data.studentId == request.auth.uid &&
+          request.resource.data.studentId == request.auth.uid &&
+          request.resource.data.assignmentId == resource.data.assignmentId &&
+          request.resource.data.grade == null &&
+          request.resource.data.feedback == null &&
+          request.resource.data.gradedAt == null &&
+          request.resource.data.needsRedo == false &&
+          request.resource.data.redoNote == null &&
+          request.resource.data.redoRequestedAt == null
+        )
+      );
+      allow delete: if isSignedIn() && isParentOf(resource.data.studentId);
     }
   }
 }
