@@ -18,11 +18,11 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 /* ---------- upload ảnh lên Cloudinary (free, không cần thẻ) ---------- */
-async function uploadToCloudinary(file){
+async function uploadToCloudinary(file, folder = 'submissions'){
   const formData = new FormData();
   formData.append('file', file);
   formData.append('upload_preset', cloudinaryConfig.uploadPreset);
-  formData.append('folder', 'submissions');
+  formData.append('folder', folder);
   const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/image/upload`, {
     method: 'POST',
     body: formData
@@ -127,6 +127,7 @@ onAuthStateChanged(auth, async (user) => {
           // Lưu ý: hồ sơ CHƯA được tạo ở bước này, nên nếu họ bỏ ngang (đóng tab,
           // bấm "Dùng tài khoản khác") thì lần sau đăng nhập lại vẫn hỏi lại vai trò.
           state.userDoc = null;
+          resetRoleForm(user);
           state.view = 'choose-role';
           $loading.classList.add('hidden');
           $app.classList.remove('hidden');
@@ -221,6 +222,10 @@ function renderTopbar(){
   if(!state.user) return '';
   const name = state.userDoc?.name || state.user.email;
   const roleLabel = state.userDoc?.role === 'parent' ? 'Phụ huynh' : 'Học sinh';
+  const photo = state.userDoc?.photoURL || '';
+  const avatar = photo
+    ? `<img class="avatar" src="${photo}" alt=""/>`
+    : `<div class="avatar" style="background:${uidColor(name)}">${initials(name)}</div>`;
   return `
     <div class="topbar">
       <div class="brand">
@@ -231,7 +236,7 @@ function renderTopbar(){
         </div>
       </div>
       <div class="user-pill">
-        <div class="avatar" style="background:${uidColor(name)}">${initials(name)}</div>
+        ${avatar}
         <div>
           <div class="name">${escapeHtml(name)}</div>
           <div class="role-tag">${roleLabel}</div>
@@ -307,66 +312,180 @@ function renderLogin(){
     </div>`;
 }
 
-/* ---- Màn hình chọn vai trò (chỉ hiện ở LẦN ĐẦU đăng nhập bằng Google,
-   khi tài khoản chưa có hồ sơ trong Firestore). Nếu đã có hồ sơ thì
+/* ---- Màn hình thiết lập hồ sơ (chỉ hiện ở LẦN ĐẦU đăng nhập bằng Google,
+   khi tài khoản chưa có hồ sơ trong Firestore). Người dùng chọn vai trò, tự
+   đặt tên hiển thị, chọn giới tính và ảnh đại diện. Nếu đã có hồ sơ thì
    onAuthStateChanged sẽ vào thẳng app, không bao giờ hiện màn này. ---- */
 let roleError = '';
+// Giữ dữ liệu form ở ngoài hàm render vì mỗi lần render() sẽ vẽ lại toàn bộ
+// DOM — nếu lưu trong input thì người dùng sẽ mất những gì vừa nhập.
+let roleForm = { role:null, name:'', gender:'', avatarFile:null, avatarPreview:'' };
+
+function resetRoleForm(user){
+  roleForm = {
+    role: null,
+    name: (user?.displayName || (user?.email || '').split('@')[0] || '').trim(),
+    gender: '',
+    avatarFile: null,
+    avatarPreview: ''
+  };
+}
+
+// Ảnh đại diện sẽ dùng: ảnh người dùng tự chọn > ảnh mặc định từ Google > chữ cái đầu
+function currentAvatarPreview(){
+  return roleForm.avatarPreview || state.user?.photoURL || '';
+}
 
 function renderChooseRole(){
   const u = state.user || {};
-  const displayName = u.displayName || u.email || 'bạn';
+  const googlePhoto = u.photoURL || '';
+  const preview = currentAvatarPreview();
+  const usingGoogleDefault = !roleForm.avatarPreview && !!googlePhoto;
+  const letter = initials(roleForm.name || u.email);
+
   return `
     <div class="auth-shell">
       <div class="auth-card">
-        <svg class="mascot-big" viewBox="0 0 100 100"><circle cx="50" cy="52" r="38" fill="#FFD166"/><circle cx="36" cy="46" r="6" fill="#3A3358"/><circle cx="64" cy="46" r="6" fill="#3A3358"/><path d="M36 66 Q50 78 64 66" stroke="#3A3358" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M32 20 Q50 2 68 20" stroke="#FFD166" stroke-width="10" fill="none" stroke-linecap="round"/></svg>
-        <h1>Chào ${escapeHtml(displayName)}!</h1>
-        <div class="tag">Bạn dùng Vườn Học Tập với vai trò nào?</div>
+        <h1>Chào mừng bạn! 👋</h1>
+        <div class="tag">Thiết lập hồ sơ để bắt đầu nhé</div>
         ${roleError ? `<div class="error-msg">${escapeHtml(roleError)}</div>` : ''}
+
+        <div class="setup-section-label">Bạn dùng Vườn Học Tập với vai trò nào?</div>
         <div class="role-choice-grid">
-          <button class="role-choice" data-role="parent">
+          <button class="role-choice ${roleForm.role==='parent'?'selected':''}" data-role="parent">
             <div class="role-emoji">👩‍👧</div>
             <div class="role-name">Phụ huynh</div>
-            <div class="role-desc">Tạo môn học, giao bài tập và chấm điểm cho con</div>
+            <div class="role-desc">Giao bài tập và chấm điểm cho con</div>
           </button>
-          <button class="role-choice" data-role="student">
+          <button class="role-choice ${roleForm.role==='student'?'selected':''}" data-role="student">
             <div class="role-emoji">🧒</div>
             <div class="role-name">Học sinh</div>
-            <div class="role-desc">Xem bài tập ba mẹ giao và nộp bài bằng ảnh chụp</div>
+            <div class="role-desc">Xem bài tập và nộp bài bằng ảnh chụp</div>
           </button>
         </div>
-        <p class="field-hint" style="text-align:center;margin-top:16px;">Lựa chọn này chỉ hỏi một lần duy nhất. Nếu bạn là học sinh, sau khi chọn hãy lấy mã liên kết để gửi cho ba mẹ.</p>
-        <button class="logout-btn" id="cancelRoleBtn" style="margin-top:14px;">Dùng tài khoản khác</button>
+
+        <div class="setup-section-label">Ảnh đại diện</div>
+        <div class="avatar-picker">
+          <div class="avatar-preview-wrap">
+            ${preview
+              ? `<img src="${preview}" class="avatar-preview-img" alt="Ảnh đại diện"/>`
+              : `<div class="avatar-preview-img avatar-preview-letter" style="background:${uidColor(roleForm.name || 'x')}">${letter}</div>`}
+          </div>
+          <div class="avatar-picker-actions">
+            <label class="mini-btn" id="pickAvatarBtn">
+              📷 Chọn ảnh
+              <input type="file" accept="image/*" id="avatarInput" style="display:none;"/>
+            </label>
+            ${roleForm.avatarPreview ? `<button class="mini-btn ghost" id="clearAvatarBtn">Bỏ ảnh đã chọn</button>` : ''}
+            <div class="field-hint" style="margin-top:2px;">
+              ${roleForm.avatarPreview
+                ? 'Đang dùng ảnh bạn vừa chọn.'
+                : (usingGoogleDefault ? 'Chưa chọn ảnh — sẽ dùng ảnh từ tài khoản Google của bạn.' : 'Chưa chọn ảnh — sẽ dùng chữ cái đầu của tên.')}
+            </div>
+          </div>
+        </div>
+
+        <div class="field" style="margin-top:16px;">
+          <label>Tên hiển thị</label>
+          <input id="setupName" placeholder="Ví dụ: Bé Thiên" maxlength="40" value="${escapeHtml(roleForm.name)}"/>
+          <div class="field-hint">Bạn có thể đặt tên khác với tên trên tài khoản Google.</div>
+        </div>
+
+        <div class="setup-section-label">Giới tính</div>
+        <div class="gender-grid">
+          <button class="gender-choice ${roleForm.gender==='male'?'selected':''}" data-gender="male"><span>👦</span>Nam</button>
+          <button class="gender-choice ${roleForm.gender==='female'?'selected':''}" data-gender="female"><span>👧</span>Nữ</button>
+          <button class="gender-choice ${roleForm.gender==='other'?'selected':''}" data-gender="other"><span>🙂</span>Không nêu</button>
+        </div>
+
+        <button class="primary-btn" id="finishSetupBtn" style="margin-top:20px;">Hoàn tất & bắt đầu 🚀</button>
+        <button class="logout-btn" id="cancelRoleBtn" style="margin-top:12px;">Dùng tài khoản khác</button>
       </div>
     </div>`;
 }
 
 function attachChooseRoleHandlers(){
+  // Lưu lại tên đang gõ trước khi render lại, tránh mất chữ khi bấm các nút chọn.
+  const syncName = () => {
+    const el = document.getElementById('setupName');
+    if(el) roleForm.name = el.value;
+  };
+
   document.querySelectorAll('[data-role]').forEach(btn => {
-    btn.onclick = async () => {
-      const role = btn.dataset.role;
-      document.querySelectorAll('[data-role]').forEach(b => b.disabled = true);
-      btn.classList.add('selected');
-      roleError = '';
-      try{
-        await createProfileForGoogleUser(role);
-      }catch(e){
-        console.error('Lỗi khi tạo hồ sơ:', e);
-        roleError = e?.code === 'permission-denied'
-          ? 'Không tạo được hồ sơ. Hãy kiểm tra đã Publish Firestore Rules mới nhất chưa.'
-          : 'Không tạo được hồ sơ, vui lòng thử lại.';
-        render();
-      }
-    };
+    btn.onclick = () => { syncName(); roleForm.role = btn.dataset.role; roleError=''; render(); };
   });
+  document.querySelectorAll('[data-gender]').forEach(btn => {
+    btn.onclick = () => { syncName(); roleForm.gender = btn.dataset.gender; render(); };
+  });
+
+  const avatarInput = document.getElementById('avatarInput');
+  if(avatarInput) avatarInput.onchange = () => {
+    const f = avatarInput.files[0];
+    if(!f) return;
+    if(f.size > 8 * 1024 * 1024){
+      syncName();
+      roleError = 'Ảnh quá lớn (tối đa 8MB), hãy chọn ảnh nhỏ hơn.';
+      render();
+      return;
+    }
+    syncName();
+    roleForm.avatarFile = f;
+    roleForm.avatarPreview = URL.createObjectURL(f);
+    roleError = '';
+    render();
+  };
+
+  const clearAvatar = document.getElementById('clearAvatarBtn');
+  if(clearAvatar) clearAvatar.onclick = () => {
+    syncName();
+    roleForm.avatarFile = null;
+    roleForm.avatarPreview = '';
+    render();
+  };
+
+  const nameInput = document.getElementById('setupName');
+  if(nameInput) nameInput.oninput = () => { roleForm.name = nameInput.value; };
+
+  const finishBtn = document.getElementById('finishSetupBtn');
+  if(finishBtn) finishBtn.onclick = async () => {
+    syncName();
+    const name = (roleForm.name || '').trim();
+    if(!roleForm.role){ roleError = 'Vui lòng chọn vai trò: Phụ huynh hay Học sinh.'; render(); return; }
+    if(!name){ roleError = 'Vui lòng nhập tên hiển thị.'; render(); return; }
+    roleError = '';
+    finishBtn.disabled = true;
+    finishBtn.textContent = roleForm.avatarFile ? 'Đang tải ảnh lên...' : 'Đang tạo hồ sơ...';
+    try{
+      await createProfileForGoogleUser(roleForm.role, name, roleForm.gender, roleForm.avatarFile);
+    }catch(e){
+      console.error('Lỗi khi tạo hồ sơ:', e);
+      roleError = e?.code === 'permission-denied'
+        ? 'Không tạo được hồ sơ. Hãy kiểm tra đã Publish Firestore Rules mới nhất chưa.'
+        : 'Không tạo được hồ sơ, vui lòng thử lại.';
+      render();
+    }
+  };
+
   const cancel = document.getElementById('cancelRoleBtn');
   if(cancel) cancel.onclick = async () => { roleError=''; await signOut(auth); };
 }
 
-// Tạo hồ sơ Firestore cho tài khoản Google vừa chọn vai trò.
-async function createProfileForGoogleUser(role){
+// Tạo hồ sơ Firestore cho tài khoản Google vừa thiết lập.
+async function createProfileForGoogleUser(role, name, gender, avatarFile){
   const u = state.user;
-  const name = u.displayName || (u.email || '').split('@')[0] || 'Người dùng';
-  const base = { name, email: u.email || '', createdAt: serverTimestamp() };
+  // Ảnh đại diện: ưu tiên ảnh người dùng tự chọn (tải lên Cloudinary);
+  // nếu không chọn thì lấy ảnh mặc định từ tài khoản Google.
+  let photoURL = u.photoURL || '';
+  if(avatarFile){
+    photoURL = await uploadToCloudinary(avatarFile, 'avatars');
+  }
+  const base = {
+    name,
+    email: u.email || '',
+    gender: gender || '',
+    photoURL,
+    createdAt: serverTimestamp()
+  };
   if(role === 'parent'){
     await setDoc(doc(db,'users',u.uid), { ...base, role:'parent', children: [] });
   } else {
@@ -480,7 +599,9 @@ function renderParentHome(){
     return `
     <div class="child-card" data-child="${c.uid}" data-name="${escapeHtml(c.name)}">
       <button class="invite-icon-btn" data-invite="${c.uid}" data-invitename="${escapeHtml(c.name)}" title="Mời đồng phụ huynh">👥</button>
-      <div class="child-avatar" style="background:${uidColor(c.name)}">${initials(c.name)}</div>
+      ${c.photoURL
+        ? `<img class="child-avatar" src="${c.photoURL}" alt=""/>`
+        : `<div class="child-avatar" style="background:${uidColor(c.name)}">${initials(c.name)}</div>`}
       <h4>${escapeHtml(c.name)}</h4>
       <div class="meta">${escapeHtml(c.email)}</div>
       ${parentCount > 1 ? `<div class="parent-count-tag">👥 ${parentCount} phụ huynh quản lý</div>` : ''}
