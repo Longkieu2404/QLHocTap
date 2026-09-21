@@ -166,5 +166,17 @@ service cloud.firestore {
       );
       allow delete: if isSignedIn() && isParentOf(resource.data.studentId);
     }
+
+    // views/{uid}__{subjectId} — mốc "đã xem tới đâu" của MỘT người dùng cho
+    // MỘT môn học, dùng để tính huy hiệu thông báo. Dữ liệu chỉ có ý nghĩa
+    // với chính chủ, không ai khác cần đọc/ghi được.
+    match /views/{viewId} {
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update: if isSignedIn() &&
+        resource.data.uid == request.auth.uid &&
+        request.resource.data.uid == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
   }
 }

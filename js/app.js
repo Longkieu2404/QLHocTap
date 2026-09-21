@@ -79,6 +79,7 @@ let state = {
   subjects: [],
   assignments: [],
   submissions: {},
+  views: {},
   view: 'login'
 };
 
@@ -149,7 +150,7 @@ onAuthStateChanged(auth, async (user) => {
       if(state.userDoc.role === 'student'){
         state.currentChildId = user.uid;
         state.currentChildName = state.userDoc.name;
-        await loadSubjectsFor(user.uid);
+        await loadChildOverview(user.uid);
         state.view = 'subjects';
       } else if(state.userDoc.role === 'parent'){
         await loadChildren();
@@ -177,7 +178,7 @@ onAuthStateChanged(auth, async (user) => {
       return;
     }
   } else {
-    state = { ...state, userDoc:null, children:[], currentChildId:null, currentSubject:null, subjects:[], view:'login' };
+    state = { ...state, userDoc:null, children:[], currentChildId:null, currentSubject:null, subjects:[], views:{}, view:'login' };
   }
   $loading.classList.add('hidden');
   $app.classList.remove('hidden');
@@ -217,6 +218,96 @@ async function loadAssignmentsFor(childId){
   subSnap.docs.forEach(d => { state.submissions[d.id] = { id:d.id, ...d.data() }; });
 }
 
+/* ---------- huy hiệu thông báo trên thẻ môn học ----------
+   Mỗi người xem (phụ huynh hoặc học sinh) có một "mốc đã xem" riêng cho từng
+   môn học, lưu trong collection 'views' (id = `${uid}__${subjectId}`). Huy
+   hiệu đếm số việc phát sinh SAU mốc đó:
+   - Phía học sinh: số bài tập MỚI được giao.
+   - Phía phụ huynh: số bài nộp/nộp lại MỚI của con.
+   Mốc chỉ cập nhật khi người dùng thực sự MỞ trang bài tập của môn đó. */
+function millisOf(ts){
+  return ts && typeof ts.toMillis === 'function' ? ts.toMillis() : 0;
+}
+
+async function loadViewsFor(uid){
+  const q1 = query(collection(db,'views'), where('uid','==', uid));
+  const snap = await getDocs(q1);
+  const map = {};
+  snap.docs.forEach(d => { map[d.data().subjectId] = millisOf(d.data().lastViewedAt); });
+  state.views = map;
+}
+
+async function markSubjectViewed(subjectId){
+  const uid = state.user.uid;
+  state.views[subjectId] = Date.now(); // ẩn huy hiệu ngay lập tức, không chờ mạng
+  try{
+    await setDoc(doc(db,'views', `${uid}__${subjectId}`), {
+      uid, subjectId, lastViewedAt: serverTimestamp()
+    });
+  }catch(e){
+    console.error('Không đánh dấu được đã xem môn học:', e);
+  }
+}
+
+function getUnreadCountForSubject(subjectId){
+  const lastViewed = state.views[subjectId] || 0;
+  const isParent = state.userDoc.role === 'parent';
+  const subjectAssignments = state.assignments.filter(a => a.subject === subjectId);
+  let count = 0;
+  subjectAssignments.forEach(a => {
+    if(isParent){
+      const sub = state.submissions[a.id];
+      if(sub && millisOf(sub.submittedAt) > lastViewed) count++;
+    } else {
+      if(millisOf(a.createdAt) > lastViewed) count++;
+    }
+  });
+  return count;
+}
+
+// Tải trọn bộ dữ liệu cần có để hiện đúng trang "Chọn môn học" cho một bé:
+// danh sách môn, bài tập + bài nộp (để tính huy hiệu), và mốc đã xem của
+// người đang đăng nhập. Dùng ở MỌI nơi điều hướng vào trang môn học.
+async function loadChildOverview(childId){
+  await Promise.all([
+    loadSubjectsFor(childId),
+    loadAssignmentsFor(childId),
+    loadViewsFor(state.user.uid)
+  ]);
+}
+
+/* ---------- biểu tượng cây lớn dần (điểm nhấn thiết kế trung tâm) ----------
+   stage 0: chỉ có chậu + thân; 1-3: thêm từng cặp lá; 4: nở hoa (hoàn thành).
+   Dùng chung cho: logo (luôn stage 4), và thanh tiến độ mỗi môn học (stage
+   theo % bài đã hoàn thành). */
+function plantSVG(stage, extraClass = ''){
+  const lit = (n) => stage >= n ? 'lit' : 'dim';
+  return `<svg class="grow-plant ${extraClass}" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <ellipse cx="50" cy="93" rx="22" ry="5" fill="rgba(0,0,0,0.08)"/>
+    <path d="M32 96 L38 74 H62 L68 96 Z" fill="#C77B4F"/>
+    <rect x="29" y="70" width="42" height="8" rx="3" fill="#B5673C"/>
+    <path d="M50 78 V30" stroke="#3F9142" stroke-width="4" stroke-linecap="round"/>
+    <g class="leaf ${lit(1)}">
+      <path d="M50 68 C36 68 30 58 34 48 C46 50 52 58 50 68Z" fill="#4FAE52"/>
+      <path d="M50 68 C64 68 70 58 66 48 C54 50 48 58 50 68Z" fill="#3F9142"/>
+    </g>
+    <g class="leaf ${lit(2)}">
+      <path d="M50 54 C38 54 32 45 36 36 C47 38 52 46 50 54Z" fill="#5CBB57"/>
+      <path d="M50 54 C62 54 68 45 64 36 C53 38 48 46 50 54Z" fill="#489C48"/>
+    </g>
+    <g class="leaf ${lit(3)}">
+      <path d="M50 40 C40 40 35 33 38 26 C47 28 51 34 50 40Z" fill="#6BC463"/>
+      <path d="M50 40 C60 40 65 33 62 26 C53 28 49 34 50 40Z" fill="#4FAE52"/>
+    </g>
+    <g class="leaf ${lit(4)}">
+      <circle cx="43" cy="20" r="5" fill="#FF6B6B"/>
+      <circle cx="57" cy="20" r="5" fill="#FF6B6B"/>
+      <circle cx="50" cy="14" r="5" fill="#FF9E9E"/>
+      <circle cx="50" cy="20" r="3.5" fill="#FFD166"/>
+    </g>
+  </svg>`;
+}
+
 /* ---------- top bar ---------- */
 function renderTopbar(){
   if(!state.user) return '';
@@ -229,7 +320,7 @@ function renderTopbar(){
   return `
     <div class="topbar">
       <div class="brand">
-        <svg class="mascot" viewBox="0 0 100 100"><circle cx="50" cy="52" r="38" fill="#FFD166"/><circle cx="36" cy="46" r="6" fill="#3A3358"/><circle cx="64" cy="46" r="6" fill="#3A3358"/><path d="M36 66 Q50 78 64 66" stroke="#3A3358" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M32 20 Q50 2 68 20" stroke="#FFD166" stroke-width="10" fill="none" stroke-linecap="round"/></svg>
+        ${plantSVG(4, 'mascot sway')}
         <div>
           <h1>Vườn Học Tập</h1>
           <div class="sub">Học vui mỗi ngày 🌈</div>
@@ -278,7 +369,7 @@ function renderLogin(){
   return `
     <div class="auth-shell">
       <div class="auth-card">
-        <svg class="mascot-big" viewBox="0 0 100 100"><circle cx="50" cy="52" r="38" fill="#FFD166"/><circle cx="36" cy="46" r="6" fill="#3A3358"/><circle cx="64" cy="46" r="6" fill="#3A3358"/><path d="M36 66 Q50 78 64 66" stroke="#3A3358" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M32 20 Q50 2 68 20" stroke="#FFD166" stroke-width="10" fill="none" stroke-linecap="round"/></svg>
+        ${plantSVG(4, 'mascot-big')}
         <h1>Vườn Học Tập</h1>
         <div class="tag">Đăng nhập để bắt đầu học nhé!</div>
         <div class="tabs">
@@ -500,7 +591,7 @@ async function createProfileForGoogleUser(role, name, gender, avatarFile){
     await loadChildren();
     state.view = 'parent-home';
   } else {
-    await loadSubjectsFor(u.uid);
+    await loadChildOverview(u.uid);
     state.currentChildId = u.uid;
     state.currentChildName = state.userDoc.name;
     state.view = 'subjects';
@@ -630,7 +721,7 @@ function attachParentHomeHandlers(){
       state.currentChildName = el.dataset.name;
       $loading.classList.remove('hidden'); $app.classList.add('hidden');
       try{
-        await loadSubjectsFor(state.currentChildId);
+        await loadChildOverview(state.currentChildId);
         state.view = 'subjects';
       }catch(e){
         console.error('Lỗi khi tải danh sách môn học:', e);
@@ -850,8 +941,10 @@ function renderSubjects(){
   const cards = list.map(s => {
     const icon = SUBJECT_ICONS[s.icon] || SUBJECT_ICONS.book;
     const deep = shadeColor(s.color, -0.22);
+    const unread = getUnreadCountForSubject(s.id);
     return `
     <div class="door-card" data-subject="${s.id}" style="background:linear-gradient(160deg, ${s.color} 0%, ${deep} 100%);">
+      ${unread > 0 ? `<div class="notif-badge">${unread > 9 ? '9+' : unread}</div>` : ''}
       ${isParent ? `
         <div class="door-actions">
           <button class="door-icon-btn" data-edit-subject="${s.id}" title="Sửa môn học">✏️</button>
@@ -958,6 +1051,7 @@ function attachSubjectsHandlers(){
     el.onclick = async (e) => {
       if(e.target.closest('[data-edit-subject]') || e.target.closest('[data-delete-subject]')) return;
       state.currentSubject = el.dataset.subject;
+      markSubjectViewed(el.dataset.subject); // không cần chờ — huy hiệu ẩn ngay, ghi nền
       $loading.classList.remove('hidden'); $app.classList.add('hidden');
       try{
         await loadAssignmentsFor(state.currentChildId);
@@ -1112,6 +1206,7 @@ async function confirmDeleteSubject(subjectId){
     }
     await deleteDoc(doc(db,'subjects', subjectId));
     await loadSubjectsFor(state.currentChildId);
+    await loadAssignmentsFor(state.currentChildId);
     render();
     showToast('Đã xoá môn học');
   }catch(e){
@@ -1202,6 +1297,21 @@ function renderAssignments(){
       <p>${state.userDoc.role==='parent' ? 'Chưa có bài tập nào — hãy tạo bài đầu tiên!' : 'Chưa có bài tập nào ở đây cả 🎉'}</p>
     </div>`;
 
+  const gradedCount = list.filter(a => {
+    const sub = state.submissions[a.id];
+    return sub && sub.grade !== null && sub.grade !== undefined && !sub.needsRedo;
+  }).length;
+  const plantStage = list.length ? Math.round((gradedCount / list.length) * 4) : 0;
+  const gardenProgress = list.length ? `
+    <div class="garden-progress">
+      <div class="plant-wrap">${plantSVG(plantStage)}</div>
+      <div class="progress-text">
+        <div class="progress-label">${gradedCount}/${list.length} bài đã hoàn thành</div>
+        <div class="progress-sub">${gradedCount === list.length ? 'Cây đã nở hoa rồi! 🌸' : 'Hoàn thành thêm bài để cây lớn hơn nhé!'}</div>
+        <div class="progress-track"><div class="progress-fill" style="width:${list.length ? Math.round((gradedCount/list.length)*100) : 0}%"></div></div>
+      </div>
+    </div>` : '';
+
   return `
     ${crumbs}
     <div class="subject-header">
@@ -1213,6 +1323,7 @@ function renderAssignments(){
       </div>
       ${state.userDoc.role==='parent' ? `<button class="add-btn" id="openCreate">+ Tạo bài tập</button>` : ''}
     </div>
+    ${gardenProgress}
     <div class="assign-list">${itemsHtml}</div>`;
 }
 
