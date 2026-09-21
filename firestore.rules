@@ -85,11 +85,16 @@ service cloud.firestore {
     match /invites/{code} {
       allow get: if isSignedIn();
       allow list: if false;
-      // Chỉ một phụ huynh ĐANG quản lý bé đó mới được tạo mã mời cho bé đó.
+      // Được tạo mã mời cho một bé khi:
+      // - Là một phụ huynh ĐANG quản lý bé đó (mời thêm đồng phụ huynh), HOẶC
+      // - Chính bé đó tự tạo mã cho mình (trường hợp học sinh tự đăng ký bằng
+      //   Google, chưa gắn với phụ huynh nào — bé đưa mã cho ba mẹ nhập vào).
       allow create: if isSignedIn() &&
-        myUser().role == 'parent' &&
-        isParentOf(request.resource.data.studentId) &&
-        request.resource.data.createdBy == request.auth.uid;
+        request.resource.data.createdBy == request.auth.uid &&
+        (
+          (myUser().role == 'parent' && isParentOf(request.resource.data.studentId)) ||
+          (myUser().role == 'student' && request.resource.data.studentId == request.auth.uid)
+        );
       allow update: if false;
       // Người tạo mã có thể thu hồi (xoá) mã mời của chính mình.
       allow delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;

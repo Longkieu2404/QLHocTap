@@ -3,7 +3,8 @@ import { cloudinaryConfig } from './cloudinary-config.js';
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword,
-  createUserWithEmailAndPassword, signOut
+  createUserWithEmailAndPassword, signOut,
+  GoogleAuthProvider, signInWithPopup
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc,
@@ -102,6 +103,14 @@ function formatDate(iso){
   return `${d}/${m}/${y}`;
 }
 
+/* ---------- auth helpers ---------- */
+// true nếu tài khoản đang đăng nhập đến từ Google (dùng để phân biệt
+// "lần đầu đăng nhập Google, chưa chọn vai trò" với "tài khoản email/mật khẩu
+// không hợp lệ" — hai trường hợp này phải xử lý khác nhau).
+function isGoogleUser(user){
+  return !!user && (user.providerData || []).some(p => p.providerId === 'google.com');
+}
+
 /* ---------- auth state ---------- */
 onAuthStateChanged(auth, async (user) => {
   $loading.classList.remove('hidden');
@@ -112,8 +121,20 @@ onAuthStateChanged(auth, async (user) => {
       const snap = await getDoc(doc(db,'users',user.uid));
       if(!snap.exists()){
         // Tài khoản Auth tồn tại nhưng KHÔNG có hồ sơ trong Firestore (users/{uid}).
-        // Trường hợp này xảy ra khi đăng nhập bằng một tài khoản chưa từng được
-        // tạo đúng quy trình (vd: qua "Đăng ký (Phụ huynh)" hoặc "Thêm con").
+        if(isGoogleUser(user)){
+          // Đăng nhập bằng Google LẦN ĐẦU: chưa có hồ sơ là chuyện bình thường.
+          // Cho người dùng tự chọn vai trò (Phụ huynh / Học sinh) rồi mới tạo hồ sơ.
+          // Lưu ý: hồ sơ CHƯA được tạo ở bước này, nên nếu họ bỏ ngang (đóng tab,
+          // bấm "Dùng tài khoản khác") thì lần sau đăng nhập lại vẫn hỏi lại vai trò.
+          state.userDoc = null;
+          state.view = 'choose-role';
+          $loading.classList.add('hidden');
+          $app.classList.remove('hidden');
+          render();
+          return;
+        }
+        // Đăng nhập bằng email/mật khẩu mà không có hồ sơ => tài khoản không được
+        // tạo đúng quy trình (vd: tạo thẳng trên Firebase Console).
         // => Không cho vào app, luôn đăng xuất ngay lập tức.
         showToast('Tài khoản này chưa có hồ sơ hợp lệ. Học sinh cần được phụ huynh tạo tài khoản trước.');
         state.user = null;
@@ -227,6 +248,7 @@ function attachTopbarHandlers(){
 /* ---------- main render router ---------- */
 function render(){
   if(state.view === 'login'){ $app.innerHTML = renderLogin(); attachLoginHandlers(); return; }
+  if(state.view === 'choose-role'){ $app.innerHTML = renderChooseRole(); attachChooseRoleHandlers(); return; }
   // Nếu môn học đang xem vừa bị xoá (vd: phụ huynh xoá rồi quay lại), quay về danh sách môn học.
   if(state.view === 'assignments' && !state.subjects.find(x=>x.id===state.currentSubject)){
     state.view = 'subjects';
@@ -270,12 +292,127 @@ function renderLogin(){
           <div class="field"><label>Mật khẩu (tối thiểu 6 ký tự)</label><input id="regPass" type="password" placeholder="••••••••"/></div>
           <button class="primary-btn" id="registerBtn">Tạo tài khoản Phụ huynh</button>
         `}
+        <div class="or-divider"><span>hoặc</span></div>
+        <button class="google-btn" id="googleBtn">
+          <svg viewBox="0 0 48 48" width="19" height="19" aria-hidden="true">
+            <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.9 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.2C12.4 13.7 17.7 9.5 24 9.5z"/>
+            <path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9.1h12.4c-.5 2.9-2.2 5.3-4.7 7l7.6 5.9c4.4-4.1 6.8-10.2 6.8-17.4z"/>
+            <path fill="#FBBC05" d="M10.5 28.6c-.5-1.4-.8-2.9-.8-4.6s.3-3.2.8-4.6l-7.9-6.2C1 16.5 0 20.1 0 24s1 7.5 2.6 10.8l7.9-6.2z"/>
+            <path fill="#34A853" d="M24 48c6.3 0 11.7-2.1 15.6-5.7l-7.6-5.9c-2.1 1.4-4.8 2.3-8 2.3-6.3 0-11.6-4.2-13.5-9.9l-7.9 6.2C6.5 42.6 14.6 48 24 48z"/>
+          </svg>
+          <span>Đăng nhập bằng Google</span>
+        </button>
+        <p class="field-hint" style="text-align:center;margin-top:12px;">Lần đầu đăng nhập bằng Google, bạn sẽ được chọn là Phụ huynh hay Học sinh.</p>
       </div>
     </div>`;
 }
 
+/* ---- Màn hình chọn vai trò (chỉ hiện ở LẦN ĐẦU đăng nhập bằng Google,
+   khi tài khoản chưa có hồ sơ trong Firestore). Nếu đã có hồ sơ thì
+   onAuthStateChanged sẽ vào thẳng app, không bao giờ hiện màn này. ---- */
+let roleError = '';
+
+function renderChooseRole(){
+  const u = state.user || {};
+  const displayName = u.displayName || u.email || 'bạn';
+  return `
+    <div class="auth-shell">
+      <div class="auth-card">
+        <svg class="mascot-big" viewBox="0 0 100 100"><circle cx="50" cy="52" r="38" fill="#FFD166"/><circle cx="36" cy="46" r="6" fill="#3A3358"/><circle cx="64" cy="46" r="6" fill="#3A3358"/><path d="M36 66 Q50 78 64 66" stroke="#3A3358" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M32 20 Q50 2 68 20" stroke="#FFD166" stroke-width="10" fill="none" stroke-linecap="round"/></svg>
+        <h1>Chào ${escapeHtml(displayName)}!</h1>
+        <div class="tag">Bạn dùng Vườn Học Tập với vai trò nào?</div>
+        ${roleError ? `<div class="error-msg">${escapeHtml(roleError)}</div>` : ''}
+        <div class="role-choice-grid">
+          <button class="role-choice" data-role="parent">
+            <div class="role-emoji">👩‍👧</div>
+            <div class="role-name">Phụ huynh</div>
+            <div class="role-desc">Tạo môn học, giao bài tập và chấm điểm cho con</div>
+          </button>
+          <button class="role-choice" data-role="student">
+            <div class="role-emoji">🧒</div>
+            <div class="role-name">Học sinh</div>
+            <div class="role-desc">Xem bài tập ba mẹ giao và nộp bài bằng ảnh chụp</div>
+          </button>
+        </div>
+        <p class="field-hint" style="text-align:center;margin-top:16px;">Lựa chọn này chỉ hỏi một lần duy nhất. Nếu bạn là học sinh, sau khi chọn hãy lấy mã liên kết để gửi cho ba mẹ.</p>
+        <button class="logout-btn" id="cancelRoleBtn" style="margin-top:14px;">Dùng tài khoản khác</button>
+      </div>
+    </div>`;
+}
+
+function attachChooseRoleHandlers(){
+  document.querySelectorAll('[data-role]').forEach(btn => {
+    btn.onclick = async () => {
+      const role = btn.dataset.role;
+      document.querySelectorAll('[data-role]').forEach(b => b.disabled = true);
+      btn.classList.add('selected');
+      roleError = '';
+      try{
+        await createProfileForGoogleUser(role);
+      }catch(e){
+        console.error('Lỗi khi tạo hồ sơ:', e);
+        roleError = e?.code === 'permission-denied'
+          ? 'Không tạo được hồ sơ. Hãy kiểm tra đã Publish Firestore Rules mới nhất chưa.'
+          : 'Không tạo được hồ sơ, vui lòng thử lại.';
+        render();
+      }
+    };
+  });
+  const cancel = document.getElementById('cancelRoleBtn');
+  if(cancel) cancel.onclick = async () => { roleError=''; await signOut(auth); };
+}
+
+// Tạo hồ sơ Firestore cho tài khoản Google vừa chọn vai trò.
+async function createProfileForGoogleUser(role){
+  const u = state.user;
+  const name = u.displayName || (u.email || '').split('@')[0] || 'Người dùng';
+  const base = { name, email: u.email || '', createdAt: serverTimestamp() };
+  if(role === 'parent'){
+    await setDoc(doc(db,'users',u.uid), { ...base, role:'parent', children: [] });
+  } else {
+    // Học sinh tự đăng ký: chưa có phụ huynh nào. Bé sẽ tạo mã liên kết để
+    // gửi cho ba mẹ; ba mẹ nhập mã đó ở mục "Tham gia bằng mã mời".
+    await setDoc(doc(db,'users',u.uid), { ...base, role:'student', parentIds: [] });
+  }
+  // Nạp lại hồ sơ vừa tạo và đi tiếp đúng luồng như đăng nhập bình thường.
+  const snap = await getDoc(doc(db,'users',u.uid));
+  state.userDoc = snap.data();
+  if(role === 'parent'){
+    await loadChildren();
+    state.view = 'parent-home';
+  } else {
+    await loadSubjectsFor(u.uid);
+    state.currentChildId = u.uid;
+    state.currentChildName = state.userDoc.name;
+    state.view = 'subjects';
+  }
+  render();
+  showToast(role === 'parent' ? 'Chào mừng phụ huynh! 🎉' : 'Chào bạn nhỏ! 🎉');
+}
+
 function attachLoginHandlers(){
   document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { authTab = b.dataset.tab; authError=''; render(); });
+
+  const googleBtn = document.getElementById('googleBtn');
+  if(googleBtn) googleBtn.onclick = async () => {
+    googleBtn.disabled = true;
+    const label = googleBtn.querySelector('span');
+    if(label) label.textContent = 'Đang mở Google...';
+    try{
+      const provider = new GoogleAuthProvider();
+      // Luôn hiện màn chọn tài khoản, tránh tự đăng nhập nhầm tài khoản đã lưu
+      // trên máy (rất hay gặp khi ba mẹ và bé dùng chung một thiết bị).
+      provider.setCustomParameters({ prompt: 'select_account' });
+      await signInWithPopup(auth, provider);
+      authError = '';
+      // onAuthStateChanged sẽ tự xử lý tiếp: có hồ sơ -> vào app,
+      // chưa có hồ sơ -> hiện màn hình chọn vai trò.
+    }catch(e){
+      console.error('Lỗi đăng nhập Google:', e);
+      authError = friendlyAuthError(e);
+      render();
+    }
+  };
 
   const loginBtn = document.getElementById('loginBtn');
   if(loginBtn) loginBtn.onclick = async () => {
@@ -324,7 +461,14 @@ function friendlyAuthError(e){
     'auth/invalid-credential':'Email hoặc mật khẩu không đúng.',
     'auth/email-already-in-use':'Email này đã được sử dụng.',
     'auth/weak-password':'Mật khẩu quá yếu (tối thiểu 6 ký tự).',
-    'auth/network-request-failed':'Lỗi kết nối mạng, thử lại nhé.'
+    'auth/network-request-failed':'Lỗi kết nối mạng, thử lại nhé.',
+    // --- đăng nhập bằng Google ---
+    'auth/popup-closed-by-user':'Bạn đã đóng cửa sổ Google trước khi đăng nhập xong.',
+    'auth/cancelled-popup-request':'Bạn đã đóng cửa sổ Google trước khi đăng nhập xong.',
+    'auth/popup-blocked':'Trình duyệt đã chặn cửa sổ Google. Hãy cho phép pop-up rồi thử lại.',
+    'auth/unauthorized-domain':'Tên miền này chưa được cho phép trong Firebase (Authentication → Settings → Authorized domains).',
+    'auth/operation-not-allowed':'Chưa bật đăng nhập Google trong Firebase (Authentication → Sign-in method).',
+    'auth/account-exists-with-different-credential':'Email này đã đăng ký bằng mật khẩu. Hãy đăng nhập bằng email/mật khẩu.'
   };
   return map[code] || 'Có lỗi xảy ra, vui lòng thử lại.';
 }
@@ -619,18 +763,75 @@ function renderSubjects(){
       <p>Ba mẹ chưa tạo môn học nào cho con cả 🎈</p>
     </div>`;
 
+  // Học sinh tự đăng ký (bằng Google) thì chưa gắn với phụ huynh nào — nhắc bé
+  // lấy mã liên kết gửi cho ba mẹ, nếu không sẽ không ai giao bài được cho bé.
+  const needsParentLink = !isParent && !((state.userDoc.parentIds || []).length);
+  const linkBanner = needsParentLink ? `
+    <div class="link-parent-banner">
+      <div>
+        <strong>Bé chưa được kết nối với ba mẹ</strong>
+        <p>Lấy mã liên kết rồi đưa cho ba mẹ nhập vào máy của ba mẹ, để ba mẹ giao bài tập cho bé nhé!</p>
+      </div>
+      <button class="action-btn" id="getLinkCodeBtn">🔗 Lấy mã liên kết</button>
+    </div>` : '';
+
   return `
     ${crumbs}
     <div class="hero">
       <h2>${isParent ? escapeHtml(state.currentChildName)+' học môn gì hôm nay?' : 'Chào bạn nhỏ! Học môn gì nào? 🎈'}</h2>
       <p>${isParent ? 'Chọn một cánh cửa để xem bài tập, hoặc tạo môn học mới' : 'Chọn một cánh cửa để xem bài tập'}</p>
     </div>
+    ${linkBanner}
     ${gridOrEmpty}`;
+}
+
+// Học sinh tự tạo mã mời cho CHÍNH MÌNH, để đưa cho ba mẹ. Ba mẹ nhập mã này ở
+// mục "Tham gia bằng mã mời" — dùng lại đúng luồng acceptInviteCode() sẵn có.
+async function createSelfInviteCode(){
+  const code = generateInviteCode();
+  await setDoc(doc(db,'invites',code), {
+    studentId: state.user.uid,
+    studentName: state.userDoc.name || '',
+    createdBy: state.user.uid,
+    createdAt: serverTimestamp()
+  });
+  return code;
+}
+
+function openSelfLinkCodeModal(){
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="overlay" id="ov">
+      <div class="modal">
+        <h3>🔗 Mã liên kết của bé</h3>
+        <div class="field-hint" style="margin-bottom:12px;">Đọc mã này cho ba mẹ. Trên máy của ba mẹ, vào màn hình "Các con" → bấm <strong>"Tham gia bằng mã mời"</strong> rồi nhập mã.</div>
+        <div id="selfCodeBox" class="invite-code-box">Đang tạo mã...</div>
+        <div id="selfCodeErr"></div>
+        <div class="modal-actions">
+          <button class="btn-cancel" id="cancelBtn" style="flex:1;">Đóng</button>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('cancelBtn').onclick = closeModal;
+  document.getElementById('ov').onclick = (e)=>{ if(e.target.id==='ov') closeModal(); };
+  createSelfInviteCode().then(code => {
+    const box = document.getElementById('selfCodeBox');
+    if(box) box.textContent = code;
+  }).catch(e => {
+    console.error('Lỗi tạo mã liên kết:', e);
+    const box = document.getElementById('selfCodeBox');
+    if(box) box.textContent = '—';
+    const err = document.getElementById('selfCodeErr');
+    if(err) err.innerHTML = `<div class="error-msg">Không tạo được mã.${e?.code === 'permission-denied' ? ' Hãy kiểm tra đã Publish Firestore Rules mới nhất chưa.' : ''}</div>`;
+  });
 }
 
 function attachSubjectsHandlers(){
   const toHome = document.getElementById('toHomeBtn');
   if(toHome) toHome.onclick = () => { state.view = 'parent-home'; render(); };
+
+  const getLinkBtn = document.getElementById('getLinkCodeBtn');
+  if(getLinkBtn) getLinkBtn.onclick = openSelfLinkCodeModal;
 
   document.querySelectorAll('.door-card[data-subject]').forEach(el => {
     el.onclick = async (e) => {
